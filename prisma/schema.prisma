@@ -1,0 +1,76 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  passwordHash   String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  averageRating  Float?
+  locationText   String?
+  items          Item[]          @relation("OwnerItems")
+  borrowRequests BorrowRequest[] @relation("BorrowerRequests")
+}
+
+model Item {
+  id                    String          @id @default(cuid())
+  ownerId               String
+  name                  String
+  category              String
+  description           String?
+  pricePerHour          Float?
+  pricePerDay           Float
+  penaltyPerHour        Float?
+  penaltyPerDay         Float?
+  marketPrice           Float?
+  source                String
+  platformName          String?
+  distanceKm            Float?
+  timesBorrowed         Int             @default(0)
+  isAvailable           Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  
+  iconName              String          @default("Wrench")
+  imageUrl              String?
+  imageUrls             String          @default("[]")
+  availableToNeighbours Boolean         @default(true)
+
+  owner                 User            @relation("OwnerItems", fields: [ownerId], references: [id], onDelete: Cascade)
+  borrowRequests        BorrowRequest[]
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([source])
+}
+
+model BorrowRequest {
+  id            String    @id @default(cuid())
+  itemId        String
+  borrowerId    String
+  status        String
+  startDate     DateTime?
+  endDate       DateTime?
+  estimatedCost Float?
+  penaltyAmount Float?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  item          Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  borrower      User      @relation("BorrowerRequests", fields: [borrowerId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@index([borrowerId])
+  @@index([status])
+}

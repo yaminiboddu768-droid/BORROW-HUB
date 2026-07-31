@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-ink: var(--theme-ink);
+  --color-paper: var(--theme-paper);
+  --color-moss: var(--theme-moss);
+  --color-moss-hover: var(--theme-moss-hover);
+  --color-marigold: var(--theme-marigold);
+  --color-marigold-hover: var(--theme-marigold-hover);
+  --color-clay: var(--theme-clay);
+  --color-clay-hover: var(--theme-clay-hover);
+  --color-slate: var(--theme-slate);
+
+  --font-display: var(--font-space-grotesk), sans-serif;
+  --font-sans: var(--font-inter), sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), monospace;
+}
+
+:root {
+  --theme-ink: #1B2A2E;
+  --theme-paper: #ECEAE0;
+  --theme-moss: #4B6B4A;
+  --theme-moss-hover: #3D583C;
+  --theme-marigold: #E3A72E;
+  --theme-marigold-hover: #C99120;
+  --theme-clay: #8B5E3C;
+  --theme-clay-hover: #734C2E;
+  --theme-slate: #5B6B6A;
+
+  --background: var(--theme-paper);
+  --foreground: var(--theme-ink);
+}
+
+.dark {
+  --theme-ink: #ECEAE0;
+  --theme-paper: #121A1C;
+  --theme-moss: #5C815A;
+  --theme-moss-hover: #6F986E;
+  --theme-marigold: #E6B54E;
+  --theme-marigold-hover: #F2C971;
+  --theme-clay: #A07049;
+  --theme-clay-hover: #B5845C;
+  --theme-slate: #9CA8A7;
+}
+
+body {
+  background-color: var(--theme-paper);
+  color: var(--theme-ink);
+  font-family: var(--font-inter), sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-space-grotesk), sans-serif;
+}
+
+.font-data {
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
