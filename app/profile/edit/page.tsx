@@ -17,6 +17,24 @@ export default function EditProfilePage() {
     address: '',
   });
 
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handlePhotoClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -89,9 +107,20 @@ export default function EditProfilePage() {
             
             {/* Profile Photo Section */}
             <div className="flex flex-col sm:flex-row items-center gap-6 pb-8 border-b border-ink/10">
-              <div className="relative group cursor-pointer">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handlePhotoChange} 
+                accept="image/*" 
+                className="hidden" 
+              />
+              <div className="relative group cursor-pointer" onClick={handlePhotoClick}>
                 <div className="w-24 h-24 rounded-full bg-ink/10 border-4 border-paper flex items-center justify-center overflow-hidden">
-                  <User className="w-10 h-10 text-slate" />
+                  {photoPreview || session?.user?.image ? (
+                    <img src={photoPreview || session?.user?.image!} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-10 h-10 text-slate" />
+                  )}
                 </div>
                 <div className="absolute inset-0 bg-ink/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <Camera className="w-6 h-6 text-paper" />
@@ -100,7 +129,7 @@ export default function EditProfilePage() {
               <div className="text-center sm:text-left">
                 <h3 className="font-bold text-ink text-lg">Profile Photo</h3>
                 <p className="text-sm text-slate mb-3">Upload a clear photo so neighbours can recognize you.</p>
-                <button type="button" className="px-4 py-2 text-sm font-medium bg-ink/5 hover:bg-ink/10 text-ink rounded-xl transition-colors">
+                <button type="button" onClick={handlePhotoClick} className="px-4 py-2 text-sm font-medium bg-ink/5 hover:bg-ink/10 text-ink rounded-xl transition-colors">
                   Change Photo
                 </button>
               </div>
