@@ -4,7 +4,7 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import { Menu, X, Settings, User } from 'lucide-react';
+import { Menu, X, Settings, User, LogOut } from 'lucide-react';
 import SettingsSidebar from './SettingsSidebar';
 
 export default function Header() {
@@ -15,6 +15,9 @@ export default function Header() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const { data: session, status } = useSession();
 
+  const userRole = (session?.user as any)?.role;
+  const isPartner = userRole === 'partner';
+
   const openSettings = () => {
     setMobileMenuOpen(false);
     setSettingsOpen(true);
@@ -23,27 +26,45 @@ export default function Header() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
-  const navLinks = [
+  interface NavLinkItem {
+    href: string;
+    label: string;
+    badge?: string;
+  }
+
+  const userNavLinks: NavLinkItem[] = [
     { href: '/browse', label: 'Browse Neighbourhood' },
     { href: '/online', label: 'Online Store', badge: 'Partner' },
     { href: '/list', label: 'List an Item' },
     { href: '/activity', label: 'My Activity' },
   ];
 
+  const partnerNavLinks: NavLinkItem[] = [
+    { href: '/partner/dashboard', label: 'Dashboard' },
+    { href: '/partner/inventory', label: 'Inventory' },
+    { href: '/partner/requests', label: 'Requests' },
+    { href: '/partner/analytics', label: 'Analytics' },
+    { href: '/partner/profile', label: 'Profile' },
+  ];
+
+  const navLinks: NavLinkItem[] = isPartner ? partnerNavLinks : userNavLinks;
+
   const isActive = (path: string) => {
     if (path === '/' && pathname === '/') return true;
-    if (path !== '/' && pathname.startsWith(path)) return true;
+    if (path !== '/' && (pathname === path || pathname.startsWith(path))) return true;
     return false;
   };
 
-  // handleSignOut moved to SettingsSidebar
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
 
   return (
     <header className="sticky top-0 z-40 bg-ink text-paper border-b-4 border-marigold shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo / Wordmark */}
-          <Link href="/" className="flex items-center gap-2 group focus:outline-none">
+          {/* Logo / Wordmark - Always Borrow Hub */}
+          <Link href={isPartner ? '/partner/dashboard' : '/'} className="flex items-center gap-2 group focus:outline-none">
             <img 
               src="/logo.png" 
               alt="Borrow Hub Logo" 
@@ -54,7 +75,7 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation - Role-Based Replacement in the SAME bar */}
           <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
             {navLinks.map((link) => {
               const active = isActive(link.href);
@@ -79,7 +100,7 @@ export default function Header() {
             })}
           </nav>
 
-          {/* Right Action: Auth */}
+          {/* Right Action: Auth & Settings */}
           <div className="hidden md:flex items-center space-x-3">
             {status === 'loading' ? (
               <div className="w-24 h-8 rounded-xl bg-paper/10 animate-pulse" />
@@ -99,12 +120,22 @@ export default function Header() {
                   {profileMenuOpen && (
                     <div className="absolute right-0 mt-2 w-48 bg-ink rounded-xl shadow-lg border border-paper/10 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
                       <Link 
-                        href="/profile/edit" 
+                        href={isPartner ? '/partner/profile' : '/profile/edit'} 
                         onClick={() => setProfileMenuOpen(false)}
                         className="block px-4 py-3 text-sm text-paper hover:bg-paper/10 transition-colors"
                       >
-                        Edit Profile
+                        {isPartner ? 'Business Profile' : 'Edit Profile'}
                       </Link>
+                      <button
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          signOut({ callbackUrl: '/login' });
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-paper/10 transition-colors flex items-center gap-2 border-t border-paper/10 font-medium"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Log Out</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -185,11 +216,11 @@ export default function Header() {
                   Logged in as <span className="text-marigold font-semibold">{session.user?.name || session.user?.email}</span>
                 </div>
                 <Link
-                  href="/profile/edit"
+                  href={isPartner ? '/partner/profile' : '/profile/edit'}
                   onClick={() => setMobileMenuOpen(false)}
                   className="w-full text-center py-2.5 rounded-xl border border-paper/20 text-paper font-medium hover:bg-paper/10"
                 >
-                  Edit Profile
+                  {isPartner ? 'Business Profile' : 'Edit Profile'}
                 </Link>
                 <button
                   onClick={openSettings}
@@ -197,6 +228,16 @@ export default function Header() {
                 >
                   <Settings className="w-4 h-4" />
                   Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signOut({ callbackUrl: '/login' });
+                  }}
+                  className="w-full text-center py-2.5 rounded-xl border border-red-500/30 text-red-400 font-medium hover:bg-red-500/10 flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Log Out</span>
                 </button>
               </>
             ) : (
@@ -220,6 +261,7 @@ export default function Header() {
           </div>
         </div>
       )}
+
       {/* Settings Sidebar */}
       <Suspense fallback={null}>
         <SettingsSidebar isOpen={settingsOpen} onClose={() => {

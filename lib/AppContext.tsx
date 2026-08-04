@@ -26,7 +26,10 @@ interface AppContextType {
   onlineRentalOrders: OnlineRentalOrder[];
   wishlistIds: string[];
   toasts: ToastMessage[];
-  addNeighbourhoodItem: (item: Omit<NeighbourhoodItem, 'id' | 'distanceKm' | 'ownerName' | 'ownerRating' | 'timesBorrowed'>) => void;
+  addNeighbourhoodItem: (item: Omit<NeighbourhoodItem, 'id' | 'distanceKm' | 'ownerName' | 'ownerRating' | 'timesBorrowed'> & { ownerName?: string }) => NeighbourhoodItem;
+  addOnlineStoreItem: (item: Partial<OnlineStoreItem>) => OnlineStoreItem;
+  updateNeighbourhoodItem: (id: string, updatedFields: Partial<NeighbourhoodItem>) => void;
+  deleteNeighbourhoodItem: (id: string) => void;
   requestBorrowItem: (item: NeighbourhoodItem) => void;
   rentOnlineItem: (item: OnlineStoreItem) => void;
   placeOnlineRentalOrder: (orderData: Omit<OnlineRentalOrder, 'id' | 'createdAt' | 'trackingNumber'>) => OnlineRentalOrder;
@@ -36,18 +39,60 @@ interface AppContextType {
   advanceBorrowStatus: (requestId: string) => void;
   acceptLendRequest: (lendId: string) => void;
   declineLendRequest: (lendId: string) => void;
-  addToast: (title: string, message: string, type?: 'success' | 'info' | 'warning') => void;
+  addToast: (title: string, message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
   removeToast: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [neighbourhoodItems, setNeighbourhoodItems] = useState<NeighbourhoodItem[]>(INITIAL_NEIGHBOURHOOD_ITEMS);
-  const [onlineStoreItems] = useState<OnlineStoreItem[]>(INITIAL_ONLINE_STORE_ITEMS);
+  const [neighbourhoodItems, setNeighbourhoodItems] = useState<NeighbourhoodItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('loop_neighbourhood_items');
+        return saved ? JSON.parse(saved) : INITIAL_NEIGHBOURHOOD_ITEMS;
+      } catch {
+        return INITIAL_NEIGHBOURHOOD_ITEMS;
+      }
+    }
+    return INITIAL_NEIGHBOURHOOD_ITEMS;
+  });
+
+  const [onlineStoreItems, setOnlineStoreItems] = useState<OnlineStoreItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('loop_online_store_items');
+        return saved ? JSON.parse(saved) : INITIAL_ONLINE_STORE_ITEMS;
+      } catch {
+        return INITIAL_ONLINE_STORE_ITEMS;
+      }
+    }
+    return INITIAL_ONLINE_STORE_ITEMS;
+  });
+
   const [borrowRequests, setBorrowRequests] = useState<BorrowRequest[]>(INITIAL_BORROW_REQUESTS);
   const [lendItems, setLendItems] = useState<LendItem[]>(INITIAL_LEND_ITEMS);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('loop_neighbourhood_items', JSON.stringify(neighbourhoodItems));
+      } catch (e) {
+        console.error('Failed to save neighbourhood items to localStorage', e);
+      }
+    }
+  }, [neighbourhoodItems]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('loop_online_store_items', JSON.stringify(onlineStoreItems));
+      } catch (e) {
+        console.error('Failed to save online store items to localStorage', e);
+      }
+    }
+  }, [onlineStoreItems]);
 
   // Wishlist state
   const [wishlistIds, setWishlistIds] = useState<string[]>(() => {
@@ -120,7 +165,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [wishlistIds]);
 
-  const addToast = (title: string, message: string, type: 'success' | 'info' | 'warning' = 'success') => {
+  const addToast = (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
     const id = 'toast-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5);
     setToasts((prev) => [...prev, { id, title, message, type }]);
     setTimeout(() => {
@@ -214,18 +259,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const addNeighbourhoodItem = (itemData: Omit<NeighbourhoodItem, 'id' | 'distanceKm' | 'ownerName' | 'ownerRating' | 'timesBorrowed'>) => {
+  const addNeighbourhoodItem = (
+    itemData: Omit<NeighbourhoodItem, 'id' | 'distanceKm' | 'ownerName' | 'ownerRating' | 'timesBorrowed'> & { ownerName?: string }
+  ): NeighbourhoodItem => {
     const newItem: NeighbourhoodItem = {
       ...itemData,
-      id: 'custom-' + Date.now(),
+      id: 'item-n-' + Date.now(),
       distanceKm: 0.1,
-      ownerName: 'You',
+      ownerId: 'usr-you',
+      ownerName: itemData.ownerName || 'You',
       ownerRating: 5.0,
       timesBorrowed: 0,
       isCustom: true,
+      availabilityStatus: itemData.availabilityStatus || 'Available',
+      imageUrls: itemData.imageUrls && itemData.imageUrls.length > 0 ? itemData.imageUrls : (itemData.imageUrl ? [itemData.imageUrl] : []),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     setNeighbourhoodItems((prev) => [newItem, ...prev]);
     addToast('Item listed successfully!', `"${newItem.name}" is now visible to neighbours within your range.`);
+    return newItem;
+  };
+
+  const addOnlineStoreItem = (itemData: Partial<OnlineStoreItem>): OnlineStoreItem => {
+    const newItem: OnlineStoreItem = {
+      id: 'item-online-' + Date.now(),
+      name: itemData.name || 'New Rental Item',
+      category: itemData.category || 'Tools',
+      platformName: itemData.platformName || 'Your Partner Store',
+      ownerId: 'usr-you',
+      pricePerDay: itemData.pricePerDay || 500,
+      pricePerHour: itemData.pricePerHour || 100,
+      marketPrice: itemData.marketPrice || 5000,
+      depositAmount: itemData.depositAmount || 1000,
+      securityDeposit: itemData.securityDeposit || 1000,
+      timesRented: 0,
+      iconName: itemData.iconName || 'Package',
+      deliveryEstimate: '1-2 Days Express',
+      rating: 5.0,
+      reviewCount: 0,
+      description: itemData.description || '',
+      imageUrl: itemData.imageUrl || '',
+      imageUrls: itemData.imageUrls && itemData.imageUrls.length > 0 ? itemData.imageUrls : (itemData.imageUrl ? [itemData.imageUrl] : []),
+      condition: itemData.condition || 'Like New',
+      availableToShip: true,
+      pickupAvailable: true,
+    };
+    setOnlineStoreItems((prev) => [newItem, ...prev]);
+    addToast('Partner Rental Published!', `"${newItem.name}" is now live on the Online Store.`);
+    return newItem;
+  };
+
+  const updateNeighbourhoodItem = (id: string, updatedFields: Partial<NeighbourhoodItem>) => {
+    setNeighbourhoodItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = {
+          ...item,
+          ...updatedFields,
+          updatedAt: new Date().toISOString(),
+        };
+        addToast('Listing Updated', `"${updated.name}" has been updated.`);
+        return updated;
+      })
+    );
+  };
+
+  const deleteNeighbourhoodItem = (id: string) => {
+    const target = neighbourhoodItems.find((i) => i.id === id);
+    setNeighbourhoodItems((prev) => prev.filter((item) => item.id !== id));
+    if (target) {
+      addToast('Listing Deleted', `"${target.name}" was removed from your listings.`, 'info');
+    }
   };
 
   const requestBorrowItem = (item: NeighbourhoodItem) => {
@@ -320,6 +425,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         wishlistIds,
         toasts,
         addNeighbourhoodItem,
+        addOnlineStoreItem,
+        updateNeighbourhoodItem,
+        deleteNeighbourhoodItem,
         requestBorrowItem,
         rentOnlineItem,
         placeOnlineRentalOrder,

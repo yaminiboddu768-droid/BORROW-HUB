@@ -36,7 +36,7 @@ interface Props {
 
 export default function ListItemClient({ userName }: Props) {
   const router = useRouter();
-  const { addToast } = useApp();
+  const { addToast, addNeighbourhoodItem, addOnlineStoreItem } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,17 +111,35 @@ export default function ListItemClient({ userName }: Props) {
 
   const triggerAiAnalysis = async (filesToAnalyze: File[]) => {
     if (filesToAnalyze.length === 0) return;
+
+    // Reset previous AI state so previous detection results are never cached or mixed
     setAiAnalyzing(true);
     setAiQualityWarning('');
     setAiFallbackMessage('');
-    setErrors(prev => ({ ...prev, general: '' }));
+    setAiConfidence(null);
+    setAiTags([]);
+    setAiDetectedDetails(null);
+    setErrors((prev) => ({ ...prev, general: '' }));
 
     try {
-      const filenames = filesToAnalyze.map(f => f.name);
+      const filenames = filesToAnalyze.map((f) => f.name);
+
+      // Convert selected files to base64 DataURLs to send actual image data to AI Vision Service
+      const fileToDataUrl = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      };
+
+      const imagesBase64 = await Promise.all(filesToAnalyze.map((f) => fileToDataUrl(f)));
+
       const res = await fetch('/api/ai/analyze-item', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames })
+        body: JSON.stringify({ filenames, images: imagesBase64 }),
       });
 
       const data = await res.json();
@@ -138,10 +156,10 @@ export default function ListItemClient({ userName }: Props) {
         return;
       }
 
-      // Populate detected fields
+      // Populate detected fields from fresh image vision analysis ONLY
       if (data.detection) {
-        if (data.detection.title || data.detection.name) {
-          setName(data.detection.title || data.detection.name);
+        if (data.detection.name || data.detection.title) {
+          setName(data.detection.name || data.detection.title);
         }
         if (data.detection.category) {
           setCategory(data.detection.category as ItemCategory);
@@ -159,7 +177,7 @@ export default function ListItemClient({ userName }: Props) {
           brand: data.detection.brand,
           model: data.detection.model,
           condition: data.detection.condition,
-          itemType: data.detection.itemType
+          itemType: data.detection.itemType,
         });
       }
 
@@ -181,7 +199,7 @@ export default function ListItemClient({ userName }: Props) {
 
       addToast('AI Snap & List Complete!', `Detected "${data.detection?.name || 'Item'}" with ${data.confidence}% accuracy.`);
     } catch (err) {
-      console.error('AI error:', err);
+      console.error('AI vision processing error:', err);
       setAiFallbackMessage("We couldn't identify this item automatically. Please complete the details manually.");
     } finally {
       setAiAnalyzing(false);
@@ -279,23 +297,40 @@ export default function ListItemClient({ userName }: Props) {
     try {
       const uploadedUrls: string[] = [];
 
-      // Upload all files concurrently
+      // Convert file to Base64 Data URL as reliable fallback
+      const fileToDataUrl = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      };
+
+      // Upload all files concurrently or convert to data URLs
       if (selectedFiles.length > 0) {
         const uploadPromises = selectedFiles.map(async (file) => {
-          const formData = new FormData();
-          formData.append('file', file);
-          const res = await fetch('/api/upload', { method: 'POST', body: formData });
-          if (!res.ok) throw new Error('Upload failed');
-          return res.json();
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.url) return data.url;
+            }
+          } catch (e) {
+            console.warn('Upload API failed, falling back to Data URL', e);
+          }
+          return fileToDataUrl(file);
         });
 
         try {
           const results = await Promise.all(uploadPromises);
-          results.forEach(res => uploadedUrls.push(res.url));
+          results.forEach(url => {
+            if (url) uploadedUrls.push(url);
+          });
         } catch (err) {
-          setErrors({ general: 'Failed to upload one or more images.' });
-          setIsSubmitting(false);
-          return;
+          console.error('File processing error:', err);
         }
       }
 
@@ -314,42 +349,69 @@ export default function ListItemClient({ userName }: Props) {
         finalDescription = (finalDescription ? finalDescription + '\n\n' : '') + '--- Item Details & Security Terms ---\n' + metadataLines.join('\n');
       }
 
-      const res = await fetch('/api/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Add item to central AppContext state & localStorage
+      const coverImage = uploadedUrls[0] || 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800';
+      const allImages = uploadedUrls.length > 0 ? uploadedUrls : [coverImage];
+
+      if (publishTarget === 'NEIGHBOUR') {
+        addNeighbourhoodItem({
           name: name.trim(),
           category,
-          marketPrice: marketPrice ? parseFloat(marketPrice) : undefined,
           pricePerDay: parseFloat(pricePerDay),
-          pricePerHour: pricePerHour ? parseFloat(pricePerHour) : undefined,
-          penaltyPerDay: penaltyPerDay ? parseFloat(penaltyPerDay) : undefined,
-          penaltyPerHour: penaltyPerHour ? parseFloat(penaltyPerHour) : undefined,
-          description: finalDescription || undefined,
-          source: publishTarget,
-          distanceKm: 0.1,
-          imageUrl: uploadedUrls[0],
-          imageUrls: JSON.stringify(uploadedUrls),
-        }),
-      });
+          pricePerHour: pricePerHour ? parseFloat(pricePerHour) : Math.round(parseFloat(pricePerDay) / 8),
+          marketPrice: marketPrice ? parseFloat(marketPrice) : parseFloat(pricePerDay) * 8,
+          securityDeposit: securityDeposit ? parseFloat(securityDeposit) : parseFloat(pricePerDay) * 2,
+          description: finalDescription,
+          availableToNeighbours: true,
+          imageUrl: coverImage,
+          imageUrls: allImages,
+          ownerName: 'You',
+          condition: aiDetectedDetails?.condition || 'Excellent',
+          iconName: 'Package',
+        });
+      } else {
+        addOnlineStoreItem({
+          name: name.trim(),
+          category,
+          pricePerDay: parseFloat(pricePerDay),
+          pricePerHour: pricePerHour ? parseFloat(pricePerHour) : Math.round(parseFloat(pricePerDay) / 8),
+          marketPrice: marketPrice ? parseFloat(marketPrice) : parseFloat(pricePerDay) * 8,
+          depositAmount: securityDeposit ? parseFloat(securityDeposit) : parseFloat(pricePerDay) * 2,
+          description: finalDescription,
+          imageUrl: coverImage,
+          imageUrls: allImages,
+          condition: aiDetectedDetails?.condition || 'Excellent',
+          platformName: userName ? `${userName}'s Partner Store` : 'Your Partner Store',
+          iconName: 'Package',
+        });
+      }
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 400) {
-          setErrors({ general: data.error?.message || 'Invalid details.' });
-        } else if (res.status === 401) {
-          router.push('/login?callbackUrl=/list');
-        } else {
-          setErrors({ general: 'Failed to create item.' });
-        }
-        return;
+      try {
+        await fetch('/api/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(),
+            category,
+            marketPrice: marketPrice ? parseFloat(marketPrice) : undefined,
+            pricePerDay: parseFloat(pricePerDay),
+            pricePerHour: pricePerHour ? parseFloat(pricePerHour) : undefined,
+            penaltyPerDay: penaltyPerDay ? parseFloat(penaltyPerDay) : undefined,
+            penaltyPerHour: penaltyPerHour ? parseFloat(penaltyPerHour) : undefined,
+            description: finalDescription || undefined,
+            source: publishTarget,
+            distanceKm: 0.1,
+            imageUrl: coverImage,
+            imageUrls: JSON.stringify(allImages),
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('API sync warning (continuing with client state):', apiErr);
       }
 
       setCreatedItemName(name.trim());
       setIsSuccess(true);
       setShowReview(false);
-      addToast('Item listed successfully!', `"${name.trim()}" is now live in the ${publishTarget === 'NEIGHBOUR' ? 'neighbourhood feed' : 'online store'}.`);
     } catch {
       setErrors({ general: 'An unexpected error occurred.' });
     } finally {

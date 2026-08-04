@@ -7,12 +7,28 @@ import { validateAndCleanListings } from '@/lib/format';
 
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
     const source = searchParams.get('source');
     const search = searchParams.get('search');
+    const mine = searchParams.get('mine') === 'true';
 
-    const whereClause: any = { isAvailable: true };
+    let whereClause: any = {};
+
+    if (mine) {
+      if (!session || !session.user?.id) {
+        return NextResponse.json([]);
+      }
+      whereClause.ownerId = session.user.id;
+    } else {
+      whereClause.isAvailable = true;
+
+      // Exclude items published by the logged-in user from Browse / Online store
+      if (session?.user?.id) {
+        whereClause.ownerId = { not: session.user.id };
+      }
+    }
 
     if (category && category !== 'All') {
       whereClause.category = category.toUpperCase();
@@ -25,18 +41,21 @@ export async function GET(req: Request) {
     if (search) {
       whereClause.name = {
         contains: search,
-      }; // Note: SQLite doesn't support case-insensitive `contains` by default without setup, so this is exact or lowercase match based on collation, but works for mock testing.
+      };
     }
 
     const items = await prisma.item.findMany({
       where: whereClause,
       include: {
         owner: {
-          select: { name: true, averageRating: true }
+          select: { id: true, name: true, averageRating: true }
+        },
+        _count: {
+          select: { borrowRequests: true }
         }
       },
       orderBy: {
-        distanceKm: 'asc' // Sort by distance ascending as requested
+        createdAt: 'desc'
       }
     });
 

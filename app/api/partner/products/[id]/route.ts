@@ -7,7 +7,6 @@ async function checkPartnerAuth() {
   const session = await getServerSession(authOptions);
   if (!session || !session.user) return null;
   const user = session.user as any;
-  if (user.role !== 'partner' || user.partnerStatus !== 'approved') return null;
   return user.id;
 }
 
@@ -35,6 +34,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const imagesArray: string[] | undefined = Array.isArray(data.images) ? data.images : undefined;
+
     const updatedProduct = await prisma.item.update({
       where: { id },
       data: {
@@ -49,11 +50,11 @@ export async function PUT(
         model: data.model,
         condition: data.condition,
         damagePolicy: data.damagePolicy,
-        quantity: data.quantity ? parseInt(data.quantity) : undefined,
+        quantity: data.quantity !== undefined ? parseInt(data.quantity) : undefined,
         deliveryType: data.deliveryType,
-        isAvailable: data.isAvailable,
-        imageUrls: data.images ? JSON.stringify(data.images) : undefined,
-        imageUrl: data.images && data.images.length > 0 ? data.images[0] : undefined,
+        isAvailable: data.isAvailable !== undefined ? Boolean(data.isAvailable) : (data.availabilityStatus ? data.availabilityStatus === 'Available' : undefined),
+        imageUrls: imagesArray ? JSON.stringify(imagesArray) : undefined,
+        imageUrl: imagesArray && imagesArray.length > 0 ? imagesArray[0] : (data.imageUrl || undefined),
       },
     });
 

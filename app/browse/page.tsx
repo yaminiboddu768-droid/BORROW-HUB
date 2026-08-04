@@ -38,7 +38,7 @@ import {
 export default function BrowsePage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { addToast } = useApp();
+  const { addToast, neighbourhoodItems } = useApp();
 
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,13 +58,25 @@ export default function BrowsePage() {
   const fetchItems = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`/api/items?source=NEIGHBOUR`);
-      if (res.ok) {
-        setItems(await res.json());
+      let dbItems: any[] = [];
+      try {
+        const res = await fetch(`/api/items?source=NEIGHBOUR`);
+        if (res.ok) {
+          dbItems = await res.json();
+        }
+      } catch (err) {
+        console.warn('API fetch fallback to local state', err);
       }
+
+      const dbIds = new Set(dbItems.map((i) => i.id));
+      const combined = [
+        ...neighbourhoodItems,
+        ...dbItems.filter((i) => !neighbourhoodItems.some((n) => n.id === i.id))
+      ];
+      setItems(combined);
     } catch (error) {
       console.error('Failed to fetch items', error);
-      addToast('Error', 'Failed to load neighbourhood items.', 'warning');
+      setItems(neighbourhoodItems);
     } finally {
       setIsLoading(false);
     }
@@ -72,7 +84,7 @@ export default function BrowsePage() {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [neighbourhoodItems]);
 
   const getCategoryIcon = (iconName: string, className = "w-8 h-8 text-white/50") => {
     switch (iconName) {
@@ -137,6 +149,15 @@ export default function BrowsePage() {
   };
 
   const filteredItems = items.filter((item) => {
+    // Hide logged in user's own items from Browse Neighbourhood
+    const isOwnItem =
+      (session?.user?.id && item.ownerId === session.user.id) ||
+      (session?.user?.id && item.owner?.id === session.user.id) ||
+      item.ownerName === 'You' ||
+      item.owner?.name === 'You';
+
+    if (isOwnItem) return false;
+
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -77,12 +77,22 @@ export function ItemRequestModal({ item, onClose, onSubmit, isLoading }: Props) 
     onSubmit(start, end, estimatedCost);
   };
 
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-3xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row">
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 md:p-6 bg-ink/60 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+      <div 
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl h-[90vh] md:h-[85vh] max-h-[90vh] flex flex-col md:flex-row overflow-hidden my-auto border border-ink/10 relative"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Left Side: Image Gallery */}
-        <div className="w-full md:w-1/2 bg-ink/5 p-6 flex flex-col">
+        <div className="w-full md:w-1/2 bg-ink/5 p-5 md:p-6 flex flex-col shrink-0 min-h-0 overflow-y-auto max-h-[35vh] md:max-h-full">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display font-bold text-xl text-ink leading-tight line-clamp-1">{item.name}</h2>
             <button onClick={onClose} className="md:hidden p-2 -mr-2 text-slate hover:text-ink">
@@ -131,8 +141,8 @@ export function ItemRequestModal({ item, onClose, onSubmit, isLoading }: Props) 
           )}
         </div>
 
-        {/* Right Side: Request Details */}
-        <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col h-full overflow-y-auto">
+        {/* Right Side: Request Details & Form */}
+        <div className="w-full md:w-1/2 p-5 sm:p-6 md:p-8 flex flex-col min-h-0 overflow-y-auto h-full">
           <div className="hidden md:flex justify-end mb-2">
             <button onClick={onClose} className="p-2 -mr-2 text-slate hover:text-ink bg-slate-50 rounded-full">
               <X className="w-5 h-5" />
@@ -142,7 +152,7 @@ export function ItemRequestModal({ item, onClose, onSubmit, isLoading }: Props) 
           <div className="space-y-6 flex-grow">
             <div>
               <h3 className="font-display font-bold text-2xl text-ink">Request to Borrow</h3>
-              <div className="flex gap-2 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2">
                 <Badge variant="outline">{item.category}</Badge>
                 <Badge variant="moss">{item.distanceKm} km</Badge>
                 {item.marketPrice && (
@@ -153,6 +163,13 @@ export function ItemRequestModal({ item, onClose, onSubmit, isLoading }: Props) 
                 )}
               </div>
             </div>
+
+            {item.description && (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-1">
+                <p className="text-[11px] uppercase font-data font-bold text-slate">Description & Details</p>
+                <p className="text-xs text-ink/90 leading-relaxed whitespace-pre-line">{item.description}</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-moss/5 border border-moss/20">
               {item.pricePerHour && (

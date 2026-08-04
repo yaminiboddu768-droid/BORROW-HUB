@@ -75,9 +75,19 @@ export function SmartCheckInModal({ borrowId, stage, onComplete, onCancel }: Sma
     onComplete();
   };
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 bg-ink/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-in fade-in zoom-in duration-300">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={onCancel}>
+      <div 
+        className="bg-white rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl relative my-auto border border-ink/10 animate-in fade-in zoom-in duration-300"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="sticky top-0 bg-white/90 backdrop-blur border-b border-ink/10 px-6 py-4 flex items-center justify-between z-10">

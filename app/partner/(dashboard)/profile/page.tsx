@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { useApp } from '@/lib/AppContext';
 import { ShieldCheck, LogOut, Save, ShieldAlert, CreditCard, LifeBuoy, Bell } from 'lucide-react';
 import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 
 export default function ProfileSettingsPage() {
   const { addToast } = useApp();
@@ -94,13 +95,14 @@ export default function ProfileSettingsPage() {
                 </button>
               ))}
               <div className="my-2 border-t border-slate-100"></div>
-              <Link
-                href="/api/auth/signout"
-                className="text-left px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                className="text-left px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors w-full"
               >
                 <LogOut className="w-4 h-4" />
                 Logout
-              </Link>
+              </button>
             </div>
           </Card>
         </div>

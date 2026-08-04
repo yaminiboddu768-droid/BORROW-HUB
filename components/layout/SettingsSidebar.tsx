@@ -109,7 +109,7 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
   };
 
   const handleLogout = () => {
-    signOut({ callbackUrl: '/' });
+    signOut({ callbackUrl: '/login' });
   };
 
   const markAllRead = () => {

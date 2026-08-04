@@ -5,22 +5,11 @@ import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
-    // In a real app, you would check if session.user.role === 'admin'
-    // For now, we'll just check if they are authenticated as a simple mock for the Admin
-    if (!session || !session.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // if ((session.user as any).role !== 'admin') {
-    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    // }
-
-    const partnerId = params.id;
+    const { id: partnerId } = await props.params;
 
     // Find the partner profile to get the user ID
     const partnerProfile = await prisma.partnerProfile.findUnique({

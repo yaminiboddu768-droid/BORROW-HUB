@@ -68,18 +68,46 @@ export default function OnlineStorePage() {
     'Books',
   ];
 
-  // Simulate loading state for skeleton demo
+  const [dbOnlineItems, setDbOnlineItems] = useState<any[]>([]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
+    async function fetchOnlineItems() {
+      try {
+        const res = await fetch('/api/items?source=ONLINE');
+        if (res.ok) {
+          setDbOnlineItems(await res.json());
+        }
+      } catch (err) {
+        console.error('Failed to fetch online db items', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchOnlineItems();
   }, []);
+
+  const allItems = useMemo(() => {
+    const combined = [...dbOnlineItems, ...onlineStoreItems];
+    const uniqueMap = new Map();
+    combined.forEach((i) => {
+      if (!uniqueMap.has(i.id)) uniqueMap.set(i.id, i);
+    });
+    return Array.from(uniqueMap.values());
+  }, [dbOnlineItems, onlineStoreItems]);
 
   // Filtered & Sorted items computation
   const filteredItems = useMemo(() => {
-    return onlineStoreItems
+    return allItems
       .filter((item) => {
+        // Exclude owner items from Online Store view
+        const isOwnItem =
+          (session?.user?.id && item.ownerId === session.user.id) ||
+          (session?.user?.id && item.owner?.id === session.user.id) ||
+          item.ownerName === 'You' ||
+          item.owner?.name === 'You';
+
+        if (isOwnItem) return false;
+
         const matchesCategory =
           selectedCategory === 'All' ||
           item.category.toLowerCase() === selectedCategory.toLowerCase() ||
@@ -93,7 +121,7 @@ export default function OnlineStorePage() {
           !searchQuery ||
           item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.platformName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (item.platformName && item.platformName.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
 
         return matchesCategory && matchesSearch;
@@ -105,7 +133,7 @@ export default function OnlineStorePage() {
         if (sortBy === 'newest') return b.id.localeCompare(a.id);
         return (b.timesBorrowed || b.timesRented || 0) - (a.timesBorrowed || a.timesRented || 0);
       });
-  }, [onlineStoreItems, selectedCategory, searchQuery, sortBy]);
+  }, [allItems, selectedCategory, searchQuery, sortBy, session]);
 
   const handleOpenBooking = (item: OnlineStoreItem) => {
     if (!session) {

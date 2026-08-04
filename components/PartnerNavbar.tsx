@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutGrid, Package, ClipboardList, TrendingUp, User, Settings, LogOut } from 'lucide-react';
+import { signOut } from 'next-auth/react';
 
 interface PartnerNavbarProps {
   partnerName: string;
@@ -69,13 +70,14 @@ export function PartnerNavbar({ partnerName }: PartnerNavbarProps) {
               <span className="hidden sm:inline">Settings</span>
             </Link>
 
-            <Link
-              href="/api/auth/signout"
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: '/login' })}
               className="text-red-400 hover:text-red-300 p-1 transition-colors"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
-            </Link>
+            </button>
           </div>
         </div>
 

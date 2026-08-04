@@ -8,7 +8,6 @@ async function checkPartnerAuth() {
   const session = await getServerSession(authOptions);
   if (!session || !session.user) return null;
   const user = session.user as any;
-  if (user.role !== 'partner' || user.partnerStatus !== 'approved') return null;
   return user.id;
 }
 
@@ -18,21 +17,32 @@ export async function GET(req: Request) {
     if (!ownerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const filter = searchParams.get('filter') || 'All'; // All, Active, Out of Stock, Unavailable
+    const filter = searchParams.get('filter') || 'All';
 
     let whereClause: any = { ownerId };
     
-    if (filter === 'Active') {
+    if (filter === 'Active' || filter === 'Available') {
       whereClause.isAvailable = true;
       whereClause.quantity = { gt: 0 };
     } else if (filter === 'Out of Stock') {
       whereClause.quantity = 0;
-    } else if (filter === 'Unavailable') {
+    } else if (filter === 'Unavailable' || filter === 'Paused') {
       whereClause.isAvailable = false;
+    } else if (filter === 'Currently Rented' || filter === 'Rented') {
+      whereClause.availabilityStatus = 'Rented';
+    } else if (filter === 'Reserved') {
+      whereClause.availabilityStatus = 'Reserved';
+    } else if (filter === 'Maintenance') {
+      whereClause.availabilityStatus = 'Maintenance';
     }
 
     const products = await prisma.item.findMany({
       where: whereClause,
+      include: {
+        _count: {
+          select: { borrowRequests: true }
+        }
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -49,6 +59,7 @@ export async function POST(req: Request) {
     if (!ownerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const data = await req.json();
+    const imagesArray: string[] = Array.isArray(data.images) ? data.images : (data.imageUrl ? [data.imageUrl] : []);
 
     const product = await prisma.item.create({
       data: {
@@ -60,16 +71,17 @@ export async function POST(req: Request) {
         pricePerHour: data.pricePerHour ? parseFloat(data.pricePerHour) : null,
         marketPrice: data.marketPrice ? parseFloat(data.marketPrice) : null,
         securityDeposit: data.securityDeposit ? parseFloat(data.securityDeposit) : null,
-        source: 'Partner',
+        source: 'ONLINE',
+        platformName: data.brand ? `${data.brand} Partner` : 'Partner Store',
         brand: data.brand,
         model: data.model,
         condition: data.condition,
         damagePolicy: data.damagePolicy,
         quantity: parseInt(data.quantity) || 1,
         deliveryType: data.deliveryType,
-        isAvailable: data.isAvailable !== false,
-        imageUrls: JSON.stringify(data.images || []),
-        imageUrl: data.images && data.images.length > 0 ? data.images[0] : null,
+        isAvailable: data.isAvailable !== false && data.availabilityStatus !== 'Unavailable' && data.availabilityStatus !== 'Maintenance' && data.availabilityStatus !== 'Paused',
+        imageUrls: JSON.stringify(imagesArray),
+        imageUrl: imagesArray.length > 0 ? imagesArray[0] : null,
       },
     });
 

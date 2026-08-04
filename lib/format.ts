@@ -113,21 +113,27 @@ export function getItemImage(item: any): string {
   const expectedFallback = getCategoryFallbackImage(item.category, item.name);
   let candidateUrl = '';
 
-  if (item.imageUrl && typeof item.imageUrl === 'string' && item.imageUrl.trim().startsWith('http')) {
+  const isValidUrl = (url: any): boolean => {
+    if (typeof url !== 'string') return false;
+    const trimmed = url.trim();
+    return trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:image') || trimmed.startsWith('blob:');
+  };
+
+  if (item.imageUrl && isValidUrl(item.imageUrl)) {
     candidateUrl = item.imageUrl.trim();
   } else if (item.imageUrls) {
     if (Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
-      if (typeof item.imageUrls[0] === 'string' && item.imageUrls[0].trim().startsWith('http')) {
+      if (isValidUrl(item.imageUrls[0])) {
         candidateUrl = item.imageUrls[0].trim();
       }
     } else if (typeof item.imageUrls === 'string') {
       try {
         const parsed = JSON.parse(item.imageUrls);
-        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string' && parsed[0].trim().startsWith('http')) {
+        if (Array.isArray(parsed) && parsed.length > 0 && isValidUrl(parsed[0])) {
           candidateUrl = parsed[0].trim();
         }
       } catch {
-        if (item.imageUrls.trim().startsWith('http')) {
+        if (isValidUrl(item.imageUrls)) {
           candidateUrl = item.imageUrls.trim();
         }
       }
@@ -321,10 +327,28 @@ export function validateAndCleanListings(items: any[]): any[] {
     const catUpper = category.toUpperCase();
 
     // Verify and obtain strictly matching image URL
+    const isValidUrl = (url: any): boolean => {
+      if (typeof url !== 'string') return false;
+      const trimmed = url.trim();
+      return trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:image') || trimmed.startsWith('blob:');
+    };
+
     const validatedImage = getItemImage(item);
-    const imageUrlsArray = Array.isArray(item.imageUrls) && item.imageUrls.length > 0 
-      ? item.imageUrls.map((u: any) => typeof u === 'string' && u.startsWith('http') ? u : validatedImage)
-      : [validatedImage];
+    let rawUrls: string[] = [];
+
+    if (Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+      rawUrls = item.imageUrls;
+    } else if (typeof item.imageUrls === 'string') {
+      try {
+        const parsed = JSON.parse(item.imageUrls);
+        if (Array.isArray(parsed)) rawUrls = parsed;
+      } catch {
+        if (isValidUrl(item.imageUrls)) rawUrls = [item.imageUrls];
+      }
+    }
+
+    const validUrls = rawUrls.filter(isValidUrl);
+    const imageUrlsArray = validUrls.length > 0 ? validUrls : [validatedImage];
 
     // Ensure all required fields are present with realistic defaults if missing
     const marketPrice = typeof item.marketPrice === 'number' ? item.marketPrice : 25000;

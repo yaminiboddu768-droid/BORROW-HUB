@@ -24,15 +24,20 @@ export interface NeighbourhoodItem {
   penaltyPerHour?: number;
   penaltyPerDay?: number;
   availabilityStatus?: 'Available' | 'Borrowed' | 'Maintenance' | string;
+  ownerId?: string;
   ownerName: string;
   ownerRating: number;
   timesBorrowed: number;
   iconName: string;
   description?: string;
+  condition?: string;
+  location?: string;
   availableToNeighbours: boolean;
   isCustom?: boolean;
   imageUrl?: string;
-  imageUrls?: string[] | string;
+  imageUrls?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ReviewItem {
@@ -51,6 +56,7 @@ export interface OnlineStoreItem {
   name: string;
   category: string;
   platformName: string;
+  ownerId?: string;
   brand?: string;
   pricePerHour?: number;
   pricePerDay: number;
@@ -147,5 +153,5 @@ export interface ToastMessage {
   id: string;
   title: string;
   message: string;
-  type?: 'success' | 'info' | 'warning';
+  type?: 'success' | 'info' | 'warning' | 'error';
 }
