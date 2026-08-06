@@ -16,9 +16,7 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-marigold flex items-center justify-center text-ink font-bold text-xs">
-              ∞
-            </div>
+            <img src="/logo.png" alt="Borrow Hub Logo" className="w-6 h-6 object-contain rounded-lg bg-white" />
             <span className="font-display font-bold text-paper text-lg">Borrow Hub</span>
             <span className="text-xs text-paper/50 ml-2 font-data">
               Borrow Hub — sample prototype

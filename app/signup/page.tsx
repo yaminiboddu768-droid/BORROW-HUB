@@ -86,7 +86,7 @@ export default function SignupPage() {
 
       if (signInResult?.ok) {
         addToast('Account Created!', `Welcome to Borrow Hub, ${name.trim()}!`);
-        router.push('/browse');
+        router.push('/');
         router.refresh();
       } else {
         // Account was created but auto-login failed — send to login page
@@ -103,9 +103,7 @@ export default function SignupPage() {
   return (
     <div className="max-w-md mx-auto px-4 py-12 space-y-6">
       <div className="text-center space-y-2">
-        <div className="w-12 h-12 rounded-2xl bg-moss text-paper font-bold text-2xl mx-auto flex items-center justify-center shadow">
-          ∞
-        </div>
+        <img src="/logo.png" alt="Borrow Hub Logo" className="w-12 h-12 object-contain mx-auto rounded-2xl shadow" />
         <h1 className="text-3xl font-bold font-display text-ink">Join Borrow Hub</h1>
         <p className="text-slate text-sm">
           Create your account to start borrowing and sharing with your neighbours.
