@@ -36,7 +36,7 @@ interface Props {
 
 export default function ListItemClient({ userName }: Props) {
   const router = useRouter();
-  const { addToast, addNeighbourhoodItem, addOnlineStoreItem } = useApp();
+  const { addToast } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -352,39 +352,6 @@ export default function ListItemClient({ userName }: Props) {
       // Add item to central AppContext state & localStorage
       const coverImage = uploadedUrls[0] || 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800';
       const allImages = uploadedUrls.length > 0 ? uploadedUrls : [coverImage];
-
-      if (publishTarget === 'NEIGHBOUR') {
-        addNeighbourhoodItem({
-          name: name.trim(),
-          category,
-          pricePerDay: parseFloat(pricePerDay),
-          pricePerHour: pricePerHour ? parseFloat(pricePerHour) : Math.round(parseFloat(pricePerDay) / 8),
-          marketPrice: marketPrice ? parseFloat(marketPrice) : parseFloat(pricePerDay) * 8,
-          securityDeposit: securityDeposit ? parseFloat(securityDeposit) : parseFloat(pricePerDay) * 2,
-          description: finalDescription,
-          availableToNeighbours: true,
-          imageUrl: coverImage,
-          imageUrls: allImages,
-          ownerName: 'You',
-          condition: aiDetectedDetails?.condition || 'Excellent',
-          iconName: 'Package',
-        });
-      } else {
-        addOnlineStoreItem({
-          name: name.trim(),
-          category,
-          pricePerDay: parseFloat(pricePerDay),
-          pricePerHour: pricePerHour ? parseFloat(pricePerHour) : Math.round(parseFloat(pricePerDay) / 8),
-          marketPrice: marketPrice ? parseFloat(marketPrice) : parseFloat(pricePerDay) * 8,
-          depositAmount: securityDeposit ? parseFloat(securityDeposit) : parseFloat(pricePerDay) * 2,
-          description: finalDescription,
-          imageUrl: coverImage,
-          imageUrls: allImages,
-          condition: aiDetectedDetails?.condition || 'Excellent',
-          platformName: userName ? `${userName}'s Partner Store` : 'Your Partner Store',
-          iconName: 'Package',
-        });
-      }
 
       try {
         await fetch('/api/items', {

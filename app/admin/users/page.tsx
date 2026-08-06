@@ -14,10 +14,8 @@ import {
   Star,
   MapPin,
 } from 'lucide-react';
-import { INITIAL_ADMIN_USERS, AdminUser } from '@/lib/adminMockData';
-
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>(INITIAL_ADMIN_USERS);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -28,23 +26,44 @@ export default function AdminUsersPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const toggleUserStatus = (id: string) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== id) return u;
-        const newStatus = u.status === 'Active' ? 'Suspended' : 'Active';
-        showToast(`User account "${u.name}" status set to ${newStatus}.`);
-        return { ...u, status: newStatus };
-      })
-    );
+  const queryClient = useQueryClient();
+
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/users');
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return res.json();
+    }
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string, status: string }) => {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status })
+      });
+      if (!res.ok) throw new Error('Failed to update status');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      showToast(`User account "${data.name}" status set to ${data.status}.`);
+    }
+  });
+
+  const toggleUserStatus = (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'APPROVED' ? 'BLOCKED' : 'APPROVED';
+    toggleStatusMutation.mutate({ id, status: newStatus });
   };
 
-  const filteredUsers = users.filter((u) => {
+  const filteredUsers = users.filter((u: any) => {
     if (roleFilter !== 'All' && u.role !== roleFilter) return false;
     if (statusFilter !== 'All' && u.status !== statusFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.location.toLowerCase().includes(q);
+      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.locationText && u.locationText.toLowerCase().includes(q));
     }
     return true;
   });
@@ -81,7 +100,7 @@ export default function AdminUsersPage() {
           </div>
           <div className="w-px h-6 bg-paper/20" />
           <div className="text-center">
-            <span className="block text-moss font-bold text-base">{users.filter((u) => u.status === 'Active').length}</span>
+            <span className="block text-moss font-bold text-base">{users.filter((u: any) => u.status === 'APPROVED').length}</span>
             <span className="text-paper/60 text-[10px] uppercase">Active</span>
           </div>
         </div>
@@ -138,7 +157,7 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-paper/10 text-paper">
-              {filteredUsers.map((u) => (
+              {filteredUsers.map((u: any) => (
                 <tr key={u.id} className="hover:bg-paper/5 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -162,7 +181,7 @@ export default function AdminUsersPage() {
                     <span className="font-semibold text-paper block">{u.role}</span>
                     <span className="text-paper/50 text-[11px] flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-marigold" />
-                      {u.location}
+                      {u.locationText || 'No location'}
                     </span>
                   </td>
                   <td className="px-6 py-4 font-data">
@@ -178,26 +197,24 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-4 font-data">
                     <span
                       className={`px-2.5 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 ${
-                        u.status === 'Active'
+                        u.status === 'APPROVED'
                           ? 'bg-moss/20 text-moss border border-moss/30'
-                          : u.status === 'Flagged'
-                          ? 'bg-marigold/20 text-marigold border border-marigold/30'
                           : 'bg-red-500/20 text-red-300 border border-red-500/30'
                       }`}
                     >
-                      {u.status}
+                      {u.status === 'APPROVED' ? 'Active' : u.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button
-                      onClick={() => toggleUserStatus(u.id)}
+                      onClick={() => toggleUserStatus(u.id, u.status)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow ${
-                        u.status === 'Active'
+                        u.status === 'APPROVED'
                           ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30'
                           : 'bg-moss text-paper hover:bg-moss-hover'
                       }`}
                     >
-                      {u.status === 'Active' ? 'Suspend Account' : 'Reinstate Account'}
+                      {u.status === 'APPROVED' ? 'Suspend Account' : 'Reinstate Account'}
                     </button>
                   </td>
                 </tr>

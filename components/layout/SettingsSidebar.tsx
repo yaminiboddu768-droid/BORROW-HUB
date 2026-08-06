@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { signOut, useSession } from 'next-auth/react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   X, 
   CreditCard, 
@@ -31,22 +32,7 @@ interface SettingsSidebarProps {
 
 type Tab = 'main' | 'profile' | 'payment' | 'notifications' | 'appearance' | 'wishlist' | 'help' | 'logout';
 
-// Mock Data
-const mockTransactions = [
-  { id: '1', item: 'Makita Power Drill', duration: '2 days', amount: 15, deposit: 50, date: '2026-07-20', status: 'Completed' },
-  { id: '2', item: 'Sony A7III Camera', duration: '1 week', amount: 120, deposit: 500, date: '2026-07-15', status: 'Completed' },
-];
 
-const mockNotifications = [
-  { id: '1', type: 'Booking', message: 'Your request for Makita Power Drill was approved.', time: '2 hours ago', read: false },
-  { id: '2', type: 'Payment', message: 'Payment of $15 confirmed.', time: '1 day ago', read: true },
-  { id: '3', type: 'Refund', message: 'Security deposit of $50 refunded.', time: '3 days ago', read: true },
-];
-
-const mockWishlist = [
-  { id: '1', item: 'DJI Mavic Pro 3', category: 'Electronics', price: '$45/day' },
-  { id: '2', item: 'Stand Up Paddle Board', category: 'Outdoors', price: '$20/day' },
-];
 
 function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
   const router = useRouter();
@@ -60,8 +46,40 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
   const effectiveIsOpen = isOpen || Boolean(urlTab);
   const activeTab: Tab = (urlTab as Tab) || 'main';
 
-  const [notifications, setNotifications] = useState(mockNotifications);
-  const [wishlist, setWishlist] = useState(mockWishlist);
+  const queryClient = useQueryClient();
+
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      if (!session) return [];
+      const res = await fetch('/api/user/notifications');
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!session,
+  });
+
+  const { data: wishlist = [] } = useQuery({
+    queryKey: ['wishlist'],
+    queryFn: async () => {
+      if (!session) return [];
+      const res = await fetch('/api/user/wishlist');
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!session,
+  });
+
+  const { data: transactions = [] } = useQuery({
+    queryKey: ['transactions'],
+    queryFn: async () => {
+      if (!session) return [];
+      const res = await fetch('/api/requests/borrowing');
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!session,
+  });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
@@ -112,13 +130,33 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
     signOut({ callbackUrl: '/login' });
   };
 
-  const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-  };
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/user/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'all' }),
+      });
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
-  const removeWishlist = (id: string) => {
-    setWishlist(wishlist.filter(w => w.id !== id));
-  };
+  const markAllRead = () => markAllReadMutation.mutate();
+
+  const removeWishlistMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch('/api/user/wishlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: id }),
+      });
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wishlist'] }),
+  });
+
+  const removeWishlist = (id: string) => removeWishlistMutation.mutate(id);
 
   if (!mounted) return null;
 
@@ -212,7 +250,7 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
                 <div className="flex items-center gap-3 text-ink font-medium">
                   <div className="relative p-2 bg-paper rounded-xl shadow-sm border border-ink/5 group-hover:text-marigold transition-colors">
                     <Bell className="w-5 h-5" />
-                    {notifications.some(n => !n.read) && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />}
+                    {notifications.some((n: any) => !n.read) && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />}
                   </div>
                   Notifications
                 </div>
@@ -268,22 +306,21 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
 
           {activeTab === 'payment' && (
             <div className="space-y-4">
-              {mockTransactions.map((tx) => (
+              {transactions.map((tx: any) => (
                 <div key={tx.id} className="p-4 rounded-2xl bg-ink/5 border border-ink/10">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-ink">{tx.item}</h3>
+                    <h3 className="font-bold text-ink">{tx.item?.name}</h3>
                     <span className="text-xs font-bold px-2 py-1 bg-moss/20 text-moss-hover dark:text-moss rounded-md">{tx.status}</span>
                   </div>
                   <div className="text-sm text-slate space-y-1">
-                    <p>Duration: {tx.duration}</p>
-                    <p>Date: {tx.date}</p>
+                    <p>Date: {new Date(tx.createdAt).toLocaleDateString()}</p>
                     <div className="flex justify-between items-center pt-2 mt-2 border-t border-ink/10">
-                      <span className="font-medium">Amount: ${tx.amount}</span>
-                      {tx.deposit > 0 && <span className="text-xs">Deposit: ${tx.deposit}</span>}
+                      <span className="font-medium">Amount: ${tx.estimatedCost || 0}</span>
+                      {tx.penaltyAmount > 0 && <span className="text-xs text-red-500">Penalty: ${tx.penaltyAmount}</span>}
                     </div>
                   </div>
                   <button className="mt-3 w-full py-2 text-sm font-medium border border-ink/20 rounded-xl hover:bg-ink/10 transition-colors">
-                    View Receipt
+                    View Details
                   </button>
                 </div>
               ))}
@@ -297,11 +334,11 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
                   <Check className="w-4 h-4" /> Mark all as read
                 </button>
               </div>
-              {notifications.map((n) => (
-                <div key={n.id} className={`p-4 rounded-2xl border transition-colors ${n.read ? 'bg-transparent border-ink/10' : 'bg-marigold/10 border-marigold/30'}`}>
+              {notifications.map((n: any) => (
+                <div key={n.id} className={`p-4 rounded-2xl border transition-colors ${n.isRead ? 'bg-transparent border-ink/10' : 'bg-marigold/10 border-marigold/30'}`}>
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-xs font-bold uppercase text-slate">{n.type}</span>
-                    <span className="text-xs text-slate">{n.time}</span>
+                    <span className="text-xs text-slate">{new Date(n.createdAt).toLocaleDateString()}</span>
                   </div>
                   <p className="text-ink text-sm font-medium">{n.message}</p>
                 </div>
@@ -350,14 +387,14 @@ function SettingsSidebarContent({ isOpen, onClose }: SettingsSidebarProps) {
               {wishlist.length === 0 ? (
                 <p className="text-center text-slate py-8">Your wishlist is empty.</p>
               ) : (
-                wishlist.map((item) => (
+                wishlist.map((item: any) => (
                   <div key={item.id} className="p-4 rounded-2xl border border-ink/10 bg-paper hover:shadow-md transition-shadow">
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <h3 className="font-bold text-ink">{item.item}</h3>
+                        <h3 className="font-bold text-ink">{item.name}</h3>
                         <p className="text-xs text-slate">{item.category}</p>
                       </div>
-                      <span className="font-data font-bold text-marigold-hover">{item.price}</span>
+                      <span className="font-data font-bold text-marigold-hover">${item.pricePerDay}/day</span>
                     </div>
                     <div className="flex gap-2 mt-4">
                       <button className="flex-1 py-2 bg-marigold text-ink rounded-xl font-bold text-sm hover:bg-marigold-hover transition-colors">

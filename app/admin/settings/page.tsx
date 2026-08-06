@@ -25,7 +25,7 @@ export default function AdminSettingsPage() {
   };
 
   const handleToggle = (key: keyof AdminSystemSettings) => {
-    setSettings((prev) => {
+    setSettings((prev: any) => {
       const updated = { ...prev, [key]: !prev[key] };
       showToast(`Updated system setting: "${String(key)}" set to ${updated[key]}`);
       return updated;

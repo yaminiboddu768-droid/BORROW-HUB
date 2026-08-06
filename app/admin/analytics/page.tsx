@@ -74,7 +74,7 @@ export default function AdminAnalyticsPage() {
           </div>
 
           <div className="space-y-4">
-            {categoryDistribution.map((cat, idx) => (
+            {INITIAL_ADMIN_ANALYTICS.categoryDistribution.map((cat: any, idx: number) => (
               <div key={idx} className="space-y-1.5">
                 <div className="flex justify-between text-xs font-data">
                   <span className="text-paper font-bold">{cat.category}</span>
@@ -102,7 +102,7 @@ export default function AdminAnalyticsPage() {
           </div>
 
           <div className="divide-y divide-paper/10">
-            {topLocations.map((loc, idx) => (
+            {INITIAL_ADMIN_ANALYTICS.topLocations.map((loc: any, idx: number) => (
               <div key={idx} className="py-4 flex items-center justify-between">
                 <div>
                   <h3 className="font-display font-bold text-base text-paper">{loc.city}</h3>

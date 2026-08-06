@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppProvider } from "@/lib/AppContext";
 import { AuthProvider } from "@/components/AuthProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import QueryProvider from "@/components/QueryProvider";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import SplashScreen from "@/components/SplashScreen";
@@ -46,13 +47,15 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-paper text-ink selection:bg-marigold selection:text-ink font-sans transition-colors duration-300">
         <SplashScreen />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AuthProvider>
-            <AppProvider>
-              <Header />
-              <main className="flex-1">{children}</main>
-              <Footer />
-            </AppProvider>
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <AppProvider>
+                <Header />
+                <main className="flex-1">{children}</main>
+                <Footer />
+              </AppProvider>
+            </AuthProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -19,23 +19,7 @@ interface InteractiveMapProps {
 // Fallback location if geolocation is denied (Default to a central location, e.g. London or user's preference)
 const DEFAULT_CENTER: [number, number] = [51.505, -0.09]; 
 
-// Helper to generate consistent demo coordinates
-const generateDemoCoords = (itemId: string, distanceKm: number, center: [number, number]) => {
-  // Use a simple hash of the ID to get a deterministic angle
-  let hash = 0;
-  for (let i = 0; i < itemId.length; i++) {
-    hash = itemId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  // Seed a pseudo-random angle (0 to 360)
-  const angle = Math.abs(hash) % 360 * (Math.PI / 180);
-  
-  // 1 degree of latitude is ~111km
-  const latOffset = (distanceKm * Math.cos(angle)) / 111.32;
-  const lngOffset = (distanceKm * Math.sin(angle)) / (111.32 * Math.cos(center[0] * (Math.PI / 180)));
-
-  return [center[0] + latOffset, center[1] + lngOffset] as [number, number];
-};
+// We now strictly use real coordinates from the database.
 
 // SVG icons mapping
 const getIconSvg = (category: string) => {
@@ -134,19 +118,13 @@ export default function InteractiveMap({ items, onOpenRequest, radiusKm }: Inter
   const mapItems = useMemo(() => {
     if (!center) return [];
     
-    return items.map(item => {
-      let latlng: [number, number];
-      if (item.latitude && item.longitude) {
-        latlng = [item.latitude, item.longitude];
-      } else {
-        if (!coordsMap.current.has(item.id)) {
-          coordsMap.current.set(item.id, generateDemoCoords(item.id, item.distanceKm || (Math.random() * radiusKm), center));
-        }
-        latlng = coordsMap.current.get(item.id)!;
-      }
-      return { ...item, latlng };
-    });
-  }, [items, center, radiusKm]);
+    return items
+      .filter(item => item.latitude && item.longitude)
+      .map(item => ({
+        ...item,
+        latlng: [item.latitude, item.longitude] as [number, number]
+      }));
+  }, [items, center]);
 
   if (!center) {
     return (

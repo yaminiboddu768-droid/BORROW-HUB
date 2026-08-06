@@ -23,6 +23,13 @@ export const itemSchema = z.object({
   distanceKm: z.number().optional(),
   imageUrl: z.string().optional(),
   imageUrls: z.string().optional(), // JSON string array
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+  pincode: z.string().optional(),
 });
 
 export const borrowRequestSchema = z.object({

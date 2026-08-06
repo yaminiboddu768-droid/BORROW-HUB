@@ -2,6 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { logActivity } from "@/lib/auditLogger";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -26,38 +27,46 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
-          if (credentials.loginType === 'partner') {
-            throw new Error("Email not found. Please register your business.");
-          }
-          // Auto-register user account on the fly for customers
-          let passwordHash = "";
-          if (credentials.password) {
-            passwordHash = await bcrypt.hash(credentials.password, 10);
-          }
-          const namePart = emailClean.split('@')[0];
-          const formattedName = credentials.name || (namePart.charAt(0).toUpperCase() + namePart.slice(1));
-          
-          user = await prisma.user.create({
-            data: {
-              email: emailClean,
-              name: formattedName,
-              passwordHash,
-              averageRating: 5.0,
-            }
-          });
-        } else {
-          // If not logging in via Firebase, verify password
-          if (credentials.isFirebase !== 'true') {
-            if (!credentials.password) throw new Error("Missing password");
+          if (credentials.isFirebase === 'true') {
+            // Auto-register Firebase users
+            const namePart = emailClean.split('@')[0];
+            const formattedName = credentials.name || (namePart.charAt(0).toUpperCase() + namePart.slice(1));
             
-            const isPasswordValid = await bcrypt.compare(credentials.password, user.passwordHash);
-            if (!isPasswordValid) {
-              throw new Error("Invalid credentials. Please check your email and password.");
-            }
+            user = await prisma.user.create({
+              data: {
+                email: emailClean,
+                name: formattedName,
+                passwordHash: "", // Firebase handles auth
+                averageRating: 5.0,
+              }
+            });
+          } else {
+            throw new Error("Invalid credentials. Please check your email and password.");
           }
+        }
+
+        if (user.status === 'BLOCKED') {
+          throw new Error("Your account has been blocked. Please contact support.");
+        }
+        if (user.status === 'REJECTED') {
+          throw new Error("Your account application was rejected.");
+        }
+        if (user.status === 'PENDING') {
+          throw new Error("Your account is pending approval.");
+        }
+
+        // If not logging in via Firebase, verify password
+        if (credentials.isFirebase !== 'true') {
+          if (!credentials.password) throw new Error("Missing password");
           
-          if (credentials.loginType === 'partner') {
-            if (user.role === 'customer') {
+          const isPasswordValid = await bcrypt.compare(credentials.password, user.passwordHash);
+          if (!isPasswordValid) {
+            throw new Error("Invalid credentials. Please check your email and password.");
+          }
+        }
+        
+        if (credentials.loginType === 'partner') {
+            if (user.role === 'customer' || user.role === 'USER') {
               throw new Error("This is a customer account. Please use Customer Login.");
             }
             if (user.partnerStatus === 'pending') {
@@ -66,7 +75,6 @@ export const authOptions: NextAuthOptions = {
             if (user.partnerStatus === 'rejected') {
               throw new Error("Your application was rejected. Please contact support.");
             }
-          }
         }
 
         return {
@@ -74,6 +82,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
+          status: user.status,
           partnerStatus: user.partnerStatus,
         };
       }
@@ -87,6 +96,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
+        token.status = (user as any).status;
         token.partnerStatus = (user as any).partnerStatus;
       }
       return token;
@@ -95,14 +105,36 @@ export const authOptions: NextAuthOptions = {
       if (token && session.user) {
         session.user.id = token.id as string;
         (session.user as any).role = token.role as string;
+        (session.user as any).status = token.status as string;
         (session.user as any).partnerStatus = token.partnerStatus as string;
       }
       return session;
     }
   },
+  events: {
+    async signIn({ user }) {
+      if (user) {
+        await logActivity({
+          userId: user.id,
+          role: (user as any).role || 'USER',
+          action: 'LOGIN',
+          details: 'User signed in',
+        });
+      }
+    },
+    async signOut({ session }) {
+      if (session?.user?.id) {
+        await logActivity({
+          userId: session.user.id,
+          action: 'LOGOUT',
+          details: 'User signed out',
+        });
+      }
+    }
+  },
   pages: {
     signIn: '/login',
-    signOut: '/login',
+    error: '/login',
   },
   secret: process.env.NEXTAUTH_SECRET || "fallback_secret_for_local_dev",
 };

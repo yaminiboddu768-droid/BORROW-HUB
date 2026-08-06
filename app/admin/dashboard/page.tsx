@@ -184,7 +184,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="space-y-4">
-              {INITIAL_ADMIN_ANALYTICS.monthlyGMV.map((item, idx) => (
+              {INITIAL_ADMIN_ANALYTICS.monthlyGMV.map((item: any, idx: number) => (
                 <div key={idx} className="space-y-1.5">
                   <div className="flex justify-between text-xs font-data">
                     <span className="text-paper/80 font-bold">{item.month}</span>

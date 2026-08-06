@@ -4,6 +4,7 @@ import { itemSchema } from '@/lib/validations';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { validateAndCleanListings } from '@/lib/format';
+import { logActivity } from '@/lib/auditLogger';
 
 export async function GET(req: Request) {
   try {
@@ -14,7 +15,9 @@ export async function GET(req: Request) {
     const search = searchParams.get('search');
     const mine = searchParams.get('mine') === 'true';
 
-    let whereClause: any = {};
+    let whereClause: any = {
+      isDeleted: false
+    };
 
     if (mine) {
       if (!session || !session.user?.id) {
@@ -92,7 +95,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, category, description, marketPrice, pricePerHour, pricePerDay, penaltyPerHour, penaltyPerDay, source, platformName, distanceKm, imageUrl, imageUrls } = result.data;
+    const { name, category, description, marketPrice, pricePerHour, pricePerDay, penaltyPerHour, penaltyPerDay, source, platformName, distanceKm, imageUrl, imageUrls, latitude, longitude, address, city, state, country, pincode } = result.data;
 
     const newItem = await prisma.item.create({
       data: {
@@ -111,7 +114,22 @@ export async function POST(req: Request) {
         iconName: category === 'TOOLS' ? 'Wrench' : category === 'ELECTRONICS' ? 'Tv' : 'Sparkles', // Simple mock icon logic
         imageUrl,
         imageUrls: imageUrls ?? "[]",
+        latitude,
+        longitude,
+        address,
+        city,
+        state,
+        country,
+        pincode,
       }
+    });
+
+    await logActivity({
+      userId: session.user.id,
+      role: (session.user as any).role,
+      action: 'ITEM_CREATED',
+      details: `Created item ${newItem.id}`,
+      req
     });
 
     return NextResponse.json(newItem, { status: 201 });

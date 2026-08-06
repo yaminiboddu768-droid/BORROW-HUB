@@ -38,7 +38,7 @@ const pipelineSteps: BorrowStatus[] = ['REQUESTED', 'ACCEPTED', 'PICKED_UP', 'RE
 type ActivityTab = 'ALL' | 'BORROWING' | 'LENDING' | 'LISTINGS';
 
 export default function ActivityClient() {
-  const { addToast, neighbourhoodItems, deleteNeighbourhoodItem, updateNeighbourhoodItem } = useApp();
+  const { addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<ActivityTab>('ALL');
   const [borrowRequests, setBorrowRequests] = useState<any[]>([]);
@@ -68,18 +68,7 @@ export default function ActivityClient() {
         dbListings = await listingsRes.json();
       }
 
-      // Combine DB listings with any in-memory custom items created by the user
-      const customMemItems = neighbourhoodItems.filter(
-        (i) => i.isCustom || i.ownerName === 'You'
-      );
-      
-      const existingIds = new Set(dbListings.map((l) => l.id));
-      const combined = [
-        ...dbListings,
-        ...customMemItems.filter((i) => !existingIds.has(i.id))
-      ];
-
-      setMyListings(combined);
+      setMyListings(dbListings);
     } catch (error) {
       console.error('Failed to fetch activity data', error);
       addToast('Error', 'Failed to load activity data.', 'warning');
@@ -150,15 +139,17 @@ export default function ActivityClient() {
     if (!window.confirm(`Are you sure you want to delete "${itemName}"? This action cannot be undone.`)) {
       return;
     }
-
     setActionLoading(`delete-${itemId}`);
-    deleteNeighbourhoodItem(itemId);
-    setMyListings((prev) => prev.filter((item) => item.id !== itemId));
-
     try {
-      await fetch(`/api/items/${itemId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/items/${itemId}`, { method: 'DELETE' });
+      if (res.ok) {
+        addToast('Listing Deleted', `"${itemName}" was removed from your listings.`, 'info');
+        fetchActivityData();
+      } else {
+        addToast('Error', 'Failed to delete listing', 'error');
+      }
     } catch (err) {
-      console.warn('API delete sync warning (continuing with local state):', err);
+      addToast('Error', 'Failed to delete listing', 'error');
     } finally {
       setActionLoading(null);
     }

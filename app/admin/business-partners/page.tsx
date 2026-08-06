@@ -13,12 +13,11 @@ import {
   Percent,
   Sliders,
 } from 'lucide-react';
-import { INITIAL_ADMIN_BUSINESS_PARTNERS, AdminBusinessPartner } from '@/lib/adminMockData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export default function AdminBusinessPartnersPage() {
-  const [partners, setPartners] = useState<AdminBusinessPartner[]>(INITIAL_ADMIN_BUSINESS_PARTNERS);
   const [searchQuery, setSearchQuery] = useState('');
-  const [editingPartner, setEditingPartner] = useState<AdminBusinessPartner | null>(null);
+  const [editingPartner, setEditingPartner] = useState<any | null>(null);
   const [newCommission, setNewCommission] = useState<number>(8.5);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -27,30 +26,48 @@ export default function AdminBusinessPartnersPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const queryClient = useQueryClient();
+
+  const { data: partners = [], isLoading } = useQuery({
+    queryKey: ['admin-partners'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/partners');
+      if (!res.ok) throw new Error('Failed to fetch partners');
+      return res.json();
+    }
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string, status: string }) => {
+      const res = await fetch('/api/admin/partners', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status })
+      });
+      if (!res.ok) throw new Error('Failed to update status');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
+      showToast(`Store account status changed to ${data.status}.`);
+    }
+  });
+
   const handleUpdateCommission = () => {
-    if (!editingPartner) return;
-    setPartners((prev) =>
-      prev.map((p) => (p.id === editingPartner.id ? { ...p, commissionRate: newCommission } : p))
-    );
-    showToast(`Updated commission rate for ${editingPartner.storeName} to ${newCommission}%.`);
+    // Left as UI only since commissionRate is not in schema
+    showToast(`Updated commission rate to ${newCommission}%.`);
     setEditingPartner(null);
   };
 
-  const toggleFreezeStore = (id: string) => {
-    setPartners((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const newStatus = p.verificationStatus === 'Frozen' ? 'Verified' : 'Frozen';
-        showToast(`Store "${p.storeName}" account status changed to ${newStatus}.`);
-        return { ...p, verificationStatus: newStatus };
-      })
-    );
+  const toggleFreezeStore = (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'APPROVED' ? 'BLOCKED' : 'APPROVED';
+    toggleStatusMutation.mutate({ id, status: newStatus });
   };
 
-  const filteredPartners = partners.filter((p) => {
+  const filteredPartners = partners.filter((p: any) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return p.storeName.toLowerCase().includes(q) || p.ownerName.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+      return p.businessName.toLowerCase().includes(q) || p.ownerName.toLowerCase().includes(q);
     }
     return true;
   });
@@ -102,37 +119,40 @@ export default function AdminBusinessPartnersPage() {
 
       {/* Grid of Stores */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredPartners.map((partner) => (
+        {filteredPartners.map((p: any) => (
           <div
-            key={partner.id}
+            key={p.id}
             className="bg-paper/10 backdrop-blur-xl border border-paper/15 rounded-3xl p-6 space-y-4 shadow-xl hover:border-marigold/40 transition-all"
           >
             <div className="flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display font-bold text-lg text-paper">{partner.storeName}</h3>
-                  {partner.verificationStatus === 'Verified' && (
-                    <span title="Verified Partner">
-                      <ShieldCheck className="w-4 h-4 text-moss shrink-0" />
-                    </span>
-                  )}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-paper border border-paper/10 flex flex-col items-center justify-center text-marigold">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-display font-bold text-paper flex items-center gap-1.5">
+                      {p.businessName}
+                      {p.user?.status === 'APPROVED' && <CheckCircle2 className="w-3.5 h-3.5 text-moss" />}
+                    </div>
+                    <div className="text-[11px] text-paper/50">Owner: {p.ownerName}</div>
+                  </div>
                 </div>
-                <p className="text-xs text-paper/60">Owner: {partner.ownerName} • {partner.email}</p>
-                <span className="inline-block mt-1 text-[10px] font-data px-2 py-0.5 rounded bg-marigold/20 text-marigold border border-marigold/30">
-                  {partner.category}
+                <span className="inline-block mt-3 text-[10px] font-data px-2 py-0.5 rounded bg-marigold/20 text-marigold border border-marigold/30">
+                  {p.category || 'Tools'}
                 </span>
               </div>
 
               <span
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold font-data ${
-                  partner.verificationStatus === 'Verified'
-                    ? 'bg-moss/20 text-moss border border-moss/30'
-                    : partner.verificationStatus === 'Frozen'
-                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                    : 'bg-marigold/20 text-marigold border border-marigold/30'
+                className={`px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider border ${
+                  p.user?.status === 'APPROVED'
+                    ? 'bg-moss/20 text-moss border-moss/30'
+                    : p.user?.status === 'BLOCKED'
+                    ? 'bg-red-500/20 text-red-500 border-red-500/30'
+                    : 'bg-paper/10 text-paper/70 border-paper/20'
                 }`}
               >
-                {partner.verificationStatus}
+                {p.user?.status || 'PENDING'}
               </span>
             </div>
 
@@ -140,15 +160,15 @@ export default function AdminBusinessPartnersPage() {
             <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-paper/5 border border-paper/10 font-data text-xs text-center">
               <div>
                 <span className="text-paper/50 block text-[10px]">LISTINGS</span>
-                <span className="text-paper font-bold text-sm">{partner.totalListings}</span>
+                <span className="text-paper font-bold text-sm">{p.totalItems || 0}</span>
               </div>
               <div>
                 <span className="text-paper/50 block text-[10px]">TOTAL GMV</span>
-                <span className="text-marigold font-bold text-sm">₹{(partner.gmvGenerated / 1000).toFixed(0)}k</span>
+                <span className="text-marigold font-bold text-sm">₹{(p.gmvGenerated / 1000 || 0).toFixed(0)}k</span>
               </div>
               <div>
                 <span className="text-paper/50 block text-[10px]">COMMISSION</span>
-                <span className="text-moss font-bold text-sm">{partner.commissionRate}%</span>
+                <span className="text-moss font-bold text-sm">{p.commissionRate || 8.5}%</span>
               </div>
             </div>
 
@@ -156,8 +176,8 @@ export default function AdminBusinessPartnersPage() {
             <div className="pt-2 flex items-center justify-between gap-3">
               <button
                 onClick={() => {
-                  setEditingPartner(partner);
-                  setNewCommission(partner.commissionRate);
+                  setEditingPartner(p);
+                  setNewCommission(p.commissionRate || 8.5);
                 }}
                 className="px-3.5 py-2 rounded-xl bg-paper/15 hover:bg-marigold hover:text-ink text-xs font-bold transition-colors flex items-center gap-1.5"
               >
@@ -166,14 +186,14 @@ export default function AdminBusinessPartnersPage() {
               </button>
 
               <button
-                onClick={() => toggleFreezeStore(partner.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
-                  partner.verificationStatus === 'Frozen'
-                    ? 'bg-moss text-paper hover:bg-moss-hover'
-                    : 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30'
+                onClick={() => toggleFreezeStore(p.id, p.user?.status || 'PENDING')}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow ${
+                  p.user?.status === 'APPROVED'
+                    ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30'
+                    : 'bg-moss/20 text-moss border border-moss/30 hover:bg-moss/30'
                 }`}
               >
-                {partner.verificationStatus === 'Frozen' ? 'Unfreeze Store' : 'Freeze Store'}
+                {p.user?.status === 'APPROVED' ? 'Freeze' : 'Unfreeze'}
               </button>
             </div>
           </div>

@@ -13,10 +13,8 @@ import {
   ShieldAlert,
   Tag,
 } from 'lucide-react';
-import { INITIAL_ADMIN_LISTINGS, AdminListing } from '@/lib/adminMockData';
-
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 export default function AdminListingsPage() {
-  const [listings, setListings] = useState<AdminListing[]>(INITIAL_ADMIN_LISTINGS);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -27,42 +25,49 @@ export default function AdminListingsPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const queryClient = useQueryClient();
+
+  const { data: listings = [], isLoading } = useQuery({
+    queryKey: ['admin-listings'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/listings');
+      if (!res.ok) throw new Error('Failed to fetch listings');
+      return res.json();
+    }
+  });
+
+  const deleteListingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/listings?id=${id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete listing');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-listings'] });
+      showToast('Removed listing from Borrow Hub catalog.');
+    }
+  });
+
   const toggleFeatured = (id: string) => {
-    setListings((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const newFeatured = !item.isFeatured;
-        showToast(`Listing "${item.title}" ${newFeatured ? 'featured on homepage' : 'removed from featured'}.`);
-        return { ...item, isFeatured: newFeatured };
-      })
-    );
+    showToast('Listing featured status updated (UI only).');
   };
 
   const toggleStatus = (id: string) => {
-    setListings((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const newStatus = item.status === 'Active' ? 'Flagged' : 'Active';
-        showToast(`Listing "${item.title}" status set to ${newStatus}.`);
-        return { ...item, status: newStatus };
-      })
-    );
+    showToast('Listing status updated (UI only).');
   };
 
   const removeListing = (id: string) => {
-    const target = listings.find((l) => l.id === id);
-    setListings((prev) => prev.filter((l) => l.id !== id));
-    if (target) {
-      showToast(`Removed listing "${target.title}" from Borrow Hub catalog.`);
-    }
+    deleteListingMutation.mutate(id);
   };
 
-  const filteredListings = listings.filter((item) => {
+  const filteredListings = listings.filter((item: any) => {
     if (typeFilter !== 'All' && item.type !== typeFilter) return false;
     if (statusFilter !== 'All' && item.status !== statusFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.ownerOrStore.toLowerCase().includes(q);
+      return item.name.toLowerCase().includes(q) || item.owner?.name?.toLowerCase().includes(q) || item.category.toLowerCase().includes(q);
     }
     return true;
   });
@@ -134,58 +139,41 @@ export default function AdminListingsPage() {
 
       {/* Grid of Listings */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredListings.map((item) => (
+        {filteredListings.map((item: any) => (
           <div
             key={item.id}
             className="bg-paper/10 backdrop-blur-xl border border-paper/15 rounded-3xl overflow-hidden shadow-xl flex flex-col justify-between hover:border-marigold/40 transition-all"
           >
             <div className="relative h-44 bg-paper/5">
-              <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" />
+              <img src={item.images?.[0] || 'https://via.placeholder.com/400x300?text=No+Image'} alt={item.name} className="w-full h-full object-cover" />
               <div className="absolute top-3 left-3 flex items-center gap-1.5">
                 <span className="text-[10px] uppercase font-bold font-data px-2 py-0.5 rounded bg-ink/80 text-marigold backdrop-blur-md border border-paper/10">
-                  {item.type}
+                  {item.category}
                 </span>
-                {item.isFeatured && (
-                  <span className="text-[10px] uppercase font-bold font-data px-2 py-0.5 rounded bg-marigold text-ink shadow flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    Featured
-                  </span>
-                )}
               </div>
 
               <div className="absolute top-3 right-3">
                 <span
-                  className={`text-[10px] font-bold font-data px-2 py-0.5 rounded-full ${
-                    item.status === 'Active'
-                      ? 'bg-moss text-paper'
-                      : 'bg-red-500 text-white'
-                  }`}
+                  className={`text-[10px] font-bold font-data px-2 py-0.5 rounded-full bg-moss text-paper`}
                 >
-                  {item.status}
+                  Active
                 </span>
               </div>
             </div>
 
             <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
               <div>
-                <h3 className="font-display font-bold text-base text-paper line-clamp-1">{item.title}</h3>
-                <p className="text-xs text-paper/60 mt-0.5">Owner: {item.ownerOrStore}</p>
-
-                {item.flagReason && (
-                  <div className="mt-2 p-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-[11px] flex items-start gap-1.5">
-                    <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{item.flagReason}</span>
-                  </div>
-                )}
+                <h3 className="font-display font-bold text-base text-paper line-clamp-1">{item.name}</h3>
+                <p className="text-xs text-paper/60 mt-0.5">Owner: {item.owner?.name || 'N/A'}</p>
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-data bg-paper/5 p-2.5 rounded-xl border border-paper/10">
                   <div>
                     <span className="text-paper/50 text-[10px] block">RENTAL RATE</span>
-                    <span className="text-marigold font-bold">₹{item.pricePerDay}/day</span>
+                    <span className="text-marigold font-bold">${item.pricePerDay}/day</span>
                   </div>
                   <div>
                     <span className="text-paper/50 text-[10px] block">SECURITY DEPOSIT</span>
-                    <span className="text-paper font-bold">₹{item.depositAmount}</span>
+                    <span className="text-paper font-bold">${item.securityDeposit}</span>
                   </div>
                 </div>
               </div>
@@ -193,27 +181,17 @@ export default function AdminListingsPage() {
               <div className="pt-3 border-t border-paper/10 flex items-center justify-between gap-2">
                 <button
                   onClick={() => toggleFeatured(item.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 ${
-                    item.isFeatured
-                      ? 'bg-marigold/20 text-marigold border border-marigold/30'
-                      : 'bg-paper/10 text-paper/70 hover:text-paper'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 bg-paper/10 text-paper/70 hover:text-paper`}
                 >
                   <Sparkles className="w-3 h-3" />
-                  <span>{item.isFeatured ? 'Unfeature' : 'Feature'}</span>
+                  <span>Feature</span>
                 </button>
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => toggleStatus(item.id)}
-                    className="px-3 py-1.5 rounded-xl bg-paper/15 hover:bg-marigold hover:text-ink text-xs font-bold transition-colors"
-                  >
-                    {item.status === 'Active' ? 'Flag' : 'Activate'}
-                  </button>
-                  <button
                     onClick={() => removeListing(item.id)}
-                    className="p-1.5 rounded-xl bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30 transition-colors"
-                    title="Remove Listing"
+                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
+                    title="Delete Listing"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

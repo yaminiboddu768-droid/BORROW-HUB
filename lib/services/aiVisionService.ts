@@ -1,15 +1,19 @@
 import crypto from 'crypto';
+import OpenAI from 'openai';
 
 export interface AIVisionInput {
   images?: string[]; // base64 DataURLs or URLs
   filenames?: string[];
 }
 
+export type ItemCategory = 'TOOLS' | 'ELECTRONICS' | 'SPORTS' | 'COOKWARE' | 'BOOKS' | 'OUTDOORS' | 'FURNITURE' | 'TRAVEL' | 'PARTY' | 'FITNESS' | 'VEHICLES' | 'APPLIANCES' | 'OTHER';
+
 export interface AIDetectionResult {
   itemId: string;
+  detectedObject: string;
   name: string;
   title: string;
-  category: 'TOOLS' | 'ELECTRONICS' | 'SPORTS' | 'COOKWARE' | 'BOOKS' | 'OUTDOORS' | 'FURNITURE' | 'TRAVEL' | 'PARTY' | 'FITNESS' | 'VEHICLES' | 'APPLIANCES' | 'OTHER';
+  category: ItemCategory;
   brand?: string;
   model?: string;
   itemType?: string;
@@ -32,7 +36,7 @@ export interface AIVisionResponse {
   };
   detection?: AIDetectionResult;
   pricing?: {
-    suggestedRentalPrice: number; // Price per day
+    suggestedRentalPrice: number;
     pricePerDay: number;
     pricePerHour: number;
   };
@@ -45,365 +49,139 @@ export interface AIVisionResponse {
   fallbackMessage?: string;
 }
 
-// Global In-Memory Fingerprint Cache to guarantee 100% stable analysis for identical image uploads
 const fingerprintCache = new Map<string, AIVisionResponse>();
 
-/**
- * Image Feature Vector Extractor
- * Inspects base64 data buffers, payload signatures, dimensions, and MIME types.
- */
-interface ImageFeatureVector {
-  mimeType: string;
-  payloadLength: number;
-  hash: string;
-  isCorruptOrBlurry: boolean;
-  detectedKeywords: string[];
-}
-
-function extractImageFeatureVector(images: string[], filenames: string[]): ImageFeatureVector {
+function extractHash(images: string[], filenames: string[]): string {
   const hash = crypto.createHash('sha256');
-  let totalLength = 0;
-  let mimeType = 'image/jpeg';
-  const detectedKeywords: string[] = [];
-
-  // Parse filenames for image context hints
-  filenames.forEach((fn) => {
-    const cleanFn = fn.toLowerCase();
-    hash.update(cleanFn);
-    if (cleanFn.includes('cooker') || cleanFn.includes('pressure') || cleanFn.includes('pot') || cleanFn.includes('pan') || cleanFn.includes('kettle')) {
-      detectedKeywords.push('cookware', 'pressure_cooker');
-    }
-    if (cleanFn.includes('camera') || cleanFn.includes('dslr') || cleanFn.includes('canon') || cleanFn.includes('sony') || cleanFn.includes('nikon')) {
-      detectedKeywords.push('camera', 'dslr');
-    }
-    if (cleanFn.includes('drill') || cleanFn.includes('saw') || cleanFn.includes('dewalt') || cleanFn.includes('bosch') || cleanFn.includes('tool')) {
-      detectedKeywords.push('tools', 'drill');
-    }
-    if (cleanFn.includes('cooler') || cleanFn.includes('ac') || cleanFn.includes('symphony')) {
-      detectedKeywords.push('appliances', 'cooler');
-    }
-    if (cleanFn.includes('tent') || cleanFn.includes('camp') || cleanFn.includes('quechua')) {
-      detectedKeywords.push('outdoors', 'tent');
-    }
-  });
-
-  images.forEach((img) => {
+  images.forEach(img => {
     if (img.startsWith('data:')) {
-      const parts = img.split(';');
-      if (parts[0]) mimeType = parts[0].replace('data:', '');
       const base64Str = img.split(',')[1] || '';
-      totalLength += base64Str.length;
-      hash.update(base64Str.substring(0, 1000)); // Sample head payload
-      hash.update(base64Str.substring(Math.max(0, base64Str.length - 1000))); // Sample tail payload
-
-      // Check base64 string for image header patterns & keywords
-      const lowerImg = img.toLowerCase();
-      if (lowerImg.includes('cooker') || lowerImg.includes('pressure') || lowerImg.includes('prestige') || lowerImg.includes('hawkins')) {
-        detectedKeywords.push('cookware', 'pressure_cooker');
-      }
-      if (lowerImg.includes('camera') || lowerImg.includes('dslr') || lowerImg.includes('canon') || lowerImg.includes('sony')) {
-        detectedKeywords.push('camera', 'dslr');
-      }
-      if (lowerImg.includes('drill') || lowerImg.includes('dewalt') || lowerImg.includes('bosch')) {
-        detectedKeywords.push('tools', 'drill');
-      }
+      hash.update(base64Str.substring(0, 1000));
+      hash.update(base64Str.substring(Math.max(0, base64Str.length - 1000)));
     } else {
       hash.update(img);
-      totalLength += img.length;
     }
   });
-
-  const isCorruptOrBlurry = filenames.some(f => f.toLowerCase().includes('blur') || f.toLowerCase().includes('corrupt') || f.toLowerCase().includes('dark'));
-
-  return {
-    mimeType,
-    payloadLength: totalLength,
-    hash: hash.digest('hex'),
-    isCorruptOrBlurry,
-    detectedKeywords: Array.from(new Set(detectedKeywords)),
-  };
+  filenames.forEach(f => hash.update(f.toLowerCase()));
+  return hash.digest('hex');
 }
 
-/**
- * Dedicated Production AI Vision Service
- * Analyzes uploaded image payloads and generates structured JSON output matching ONLY the uploaded product.
- */
 export async function analyzeUploadedImages(input: AIVisionInput): Promise<AIVisionResponse> {
   const images = input.images || [];
   const filenames = input.filenames || [];
 
-  if (images.length === 0 && filenames.length === 0) {
+  if (images.length === 0) {
     return {
       success: false,
       unavailable: true,
-      fallbackMessage: "We couldn't confidently identify this item. Please enter the details manually or upload a clearer image.",
+      fallbackMessage: "We couldn't confidently identify this item. Please upload clearer images or enter the details manually.",
     };
   }
 
-  // 1. Extract Deep Image Feature Vector
-  const featureVector = extractImageFeatureVector(images, filenames);
-  const fingerprintHash = featureVector.hash;
-
-  // Check if image is blurry or dark or low quality
-  if (featureVector.isCorruptOrBlurry) {
-    return {
-      success: false,
-      unavailable: true,
-      qualityCheck: {
-        passed: false,
-        score: 35,
-        message: 'Image quality is too low or blurry for accurate AI recognition.',
-      },
-      fallbackMessage: "We couldn't confidently identify this item. Please enter the details manually or upload a clearer image.",
-    };
-  }
-
-  // Return cached result if exact same image payload was analyzed previously
+  const fingerprintHash = extractHash(images, filenames);
   if (fingerprintCache.has(fingerprintHash)) {
     const cached = fingerprintCache.get(fingerprintHash)!;
     return { ...cached, fingerprintHash };
   }
 
-  // 2. Google Gemini 1.5 Flash Vision API REST Call (When GEMINI_API_KEY / GOOGLE_AI_API_KEY is configured)
-  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
-  if (geminiApiKey && images.length > 0 && images[0].startsWith('data:image/')) {
-    try {
-      const base64Data = images[0].split(',')[1];
-      const mimeType = featureVector.mimeType || 'image/jpeg';
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  if (!openaiApiKey) {
+     return {
+      success: false,
+      unavailable: true,
+      fallbackMessage: "OpenAI API key is not configured.",
+    };
+  }
 
-      const prompt = `Analyze this uploaded product image for a community borrowing & rental marketplace. Identify the item in the photo accurately.
-Return ONLY a valid JSON object matching this schema:
+  try {
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    // Extract base64 and mime parts
+    const firstImage = images[0];
+    let base64Data = '';
+    let mimeType = 'image/jpeg';
+    
+    if (firstImage.startsWith('data:')) {
+      const parts = firstImage.split(';');
+      mimeType = parts[0].replace('data:', '');
+      base64Data = parts[1].replace('base64,', '');
+    } else {
+       return {
+          success: false,
+          unavailable: true,
+          fallbackMessage: "Invalid image format uploaded.",
+        };
+    }
+
+    const prompt = `Analyze this uploaded product image for a community borrowing & rental marketplace.
+FIRST, detect the primary object present in the image (e.g. Bicycle, Laptop, Pressure Cooker, Power Drill, Camera, Chair, TV, Microwave, Tent, Football).
+THEN generate item details corresponding ONLY to that detected object.
+
+Return ONLY a valid JSON object matching exactly this schema, without any markdown formatting like \`\`\`json:
 {
-  "name": "Short product name (e.g. Prestige Pressure Cooker 5L)",
-  "title": "Full title (e.g. Prestige Pressure Cooker 5L)",
+  "detectedObject": "Primary object name",
+  "name": "Short concise product title",
+  "title": "Full product title",
   "category": "COOKWARE|TOOLS|ELECTRONICS|SPORTS|OUTDOORS|APPLIANCES|FURNITURE|PARTY|VEHICLES|OTHER",
-  "brand": "Brand name if visible",
+  "brand": "Brand if visible",
   "model": "Model if visible",
-  "itemType": "Product type",
+  "itemType": "Product classification",
   "condition": "New|Like New|Excellent|Good|Fair",
-  "description": "Short professional description describing ONLY the uploaded product: product type, condition, main purpose, and suitable use case.",
+  "description": "2-3 sentences describing ONLY the detected object: what it is, main purpose, condition, basic characteristics, and suitable use case.",
   "tags": ["tag1", "tag2"],
   "estimatedMarketPrice": estimated_rupee_price_number,
-  "confidence": confidence_number_between_85_and_98
+  "confidence": confidence_number_between_80_and_98
 }`;
 
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: mimeType, data: base64Data } },
-                ],
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${base64Data}`,
               },
-            ],
-          }),
-        }
-      );
+            },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
 
-      if (geminiRes.ok) {
-        const geminiData = await geminiRes.json();
-        const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText) {
-          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed: AIDetectionResult = JSON.parse(jsonMatch[0]);
-            if (parsed.confidence && parsed.confidence >= 75) {
-              const response = formatProductionResponse(parsed, fingerprintHash);
-              fingerprintCache.set(fingerprintHash, response);
-              return response;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Gemini Vision API call failed, falling back to local vision classifier', e);
+    const responseText = response.choices[0].message.content || '{}';
+    
+    // Clean up potential markdown formatting (though json_object format should handle this, just to be safe)
+    const cleanedText = responseText.replace(/```json\n/g, '').replace(/```\n?/g, '').trim();
+    
+    const parsed: AIDetectionResult = JSON.parse(cleanedText);
+    
+    if (!parsed || !parsed.detectedObject) {
+       throw new Error("Failed to parse valid AI detection result.");
     }
+    
+    const finalResponse = formatProductionResponse(parsed, fingerprintHash);
+    fingerprintCache.set(fingerprintHash, finalResponse);
+    return finalResponse;
+
+  } catch (error) {
+    console.error('OpenAI Vision API Error:', error);
+    return {
+      success: false,
+      unavailable: true,
+      qualityCheck: {
+        passed: false,
+        score: 0,
+        message: 'Failed to analyze image.',
+      },
+      fallbackMessage: "Our AI could not analyze the image. Please enter details manually.",
+    };
   }
-
-  // 3. Local Production AI Vision Classifier
-  // Maps image feature vector & keywords to exact product metadata deterministically
-  const keywords = featureVector.detectedKeywords;
-  let response: AIVisionResponse;
-
-  if (keywords.includes('pressure_cooker') || keywords.includes('cookware')) {
-    response = formatProductionResponse(
-      {
-        itemId: 'ai-item-' + fingerprintHash.substring(0, 8),
-        name: 'Prestige Pressure Cooker 5L',
-        title: 'Prestige Pressure Cooker 5L',
-        category: 'COOKWARE',
-        brand: 'Prestige',
-        model: 'Deluxe Alpha 5L',
-        itemType: 'Induction Pressure Cooker',
-        condition: 'Good',
-        description: '5-litre stainless steel pressure cooker in good condition, suitable for everyday cooking, rice, and stews.',
-        tags: ['Kitchen', 'PressureCooker', 'Cookware', 'Prestige', 'Induction'],
-        estimatedMarketPrice: 2500,
-        confidence: 96,
-      },
-      fingerprintHash
-    );
-  } else if (keywords.includes('camera') || keywords.includes('dslr')) {
-    response = formatProductionResponse(
-      {
-        itemId: 'ai-item-' + fingerprintHash.substring(0, 8),
-        name: 'Canon DSLR Camera',
-        title: 'Canon DSLR Camera',
-        category: 'ELECTRONICS',
-        brand: 'Canon',
-        model: 'EOS Rebel T7',
-        itemType: 'Digital SLR Camera',
-        condition: 'Excellent',
-        description: 'Canon DSLR camera with 18-55mm lens, suitable for photography and videography.',
-        tags: ['Camera', 'Photography', 'DSLR', 'Canon', 'Electronics'],
-        estimatedMarketPrice: 35000,
-        confidence: 97,
-      },
-      fingerprintHash
-    );
-  } else if (keywords.includes('drill') || keywords.includes('tools')) {
-    response = formatProductionResponse(
-      {
-        itemId: 'ai-item-' + fingerprintHash.substring(0, 8),
-        name: 'Bosch Rotary Hammer Drill',
-        title: 'Bosch Rotary Hammer Drill',
-        category: 'TOOLS',
-        brand: 'Bosch',
-        model: 'GBH 2-28',
-        itemType: 'Cordless Power Drill',
-        condition: 'Excellent',
-        description: 'Cordless power drill in working condition, suitable for home repairs and professional use.',
-        tags: ['Drill', 'PowerTools', 'Bosch', 'DIY', 'Tools'],
-        estimatedMarketPrice: 9500,
-        confidence: 95,
-      },
-      fingerprintHash
-    );
-  } else if (keywords.includes('cooler') || keywords.includes('appliances')) {
-    response = formatProductionResponse(
-      {
-        itemId: 'ai-item-' + fingerprintHash.substring(0, 8),
-        name: 'Symphony Personal Air Cooler',
-        title: 'Symphony Personal Air Cooler',
-        category: 'APPLIANCES',
-        brand: 'Symphony',
-        model: 'Diet 12T',
-        itemType: 'Tower Air Cooler',
-        condition: 'Excellent',
-        description: 'Personal tower air cooler in good condition, suitable for room cooling and summer heat.',
-        tags: ['Cooler', 'Appliance', 'Symphony', 'Summer'],
-        estimatedMarketPrice: 6800,
-        confidence: 94,
-      },
-      fingerprintHash
-    );
-  } else if (keywords.includes('tent') || keywords.includes('outdoors')) {
-    response = formatProductionResponse(
-      {
-        itemId: 'ai-item-' + fingerprintHash.substring(0, 8),
-        name: 'Quechua 4-Person Camping Tent',
-        title: 'Quechua 4-Person Camping Tent',
-        category: 'OUTDOORS',
-        brand: 'Quechua',
-        model: 'Arpenaz 4.1',
-        itemType: 'Camping Tent',
-        condition: 'Like New',
-        description: 'Waterproof 4-person camping tent in like new condition, suitable for outdoor camping and hiking trips.',
-        tags: ['Camping', 'Tent', 'Outdoors', 'Quechua'],
-        estimatedMarketPrice: 6500,
-        confidence: 96,
-      },
-      fingerprintHash
-    );
-  } else {
-    // High-precision hash-based image feature profile selector for general uploads
-    const hashNum = parseInt(fingerprintHash.substring(0, 4), 16) || 0;
-    const itemProfiles = [
-      {
-        name: 'Prestige Pressure Cooker 5L',
-        title: 'Prestige Pressure Cooker 5L',
-        category: 'COOKWARE' as const,
-        brand: 'Prestige',
-        model: 'Deluxe Alpha 5L',
-        itemType: 'Induction Pressure Cooker',
-        condition: 'Good' as const,
-        description: '5-litre stainless steel pressure cooker in good condition, suitable for everyday cooking, rice, and stews.',
-        tags: ['Kitchen', 'PressureCooker', 'Cookware', 'Prestige'],
-        estimatedMarketPrice: 2500,
-      },
-      {
-        name: 'Bosch Rotary Hammer Drill',
-        title: 'Bosch Rotary Hammer Drill',
-        category: 'TOOLS' as const,
-        brand: 'Bosch',
-        model: 'GBH 2-28',
-        itemType: 'Power Tool',
-        condition: 'Excellent' as const,
-        description: 'Cordless power drill in working condition, suitable for home repairs and professional use.',
-        tags: ['Drill', 'PowerTools', 'Bosch', 'Tools'],
-        estimatedMarketPrice: 9500,
-      },
-      {
-        name: 'Canon DSLR Camera',
-        title: 'Canon DSLR Camera',
-        category: 'ELECTRONICS' as const,
-        brand: 'Canon',
-        model: 'EOS Rebel T7',
-        itemType: 'Digital SLR Camera',
-        condition: 'Excellent' as const,
-        description: 'Canon DSLR camera with 18-55mm lens, suitable for photography and videography.',
-        tags: ['Camera', 'Photography', 'DSLR', 'Canon'],
-        estimatedMarketPrice: 35000,
-      },
-      {
-        name: 'Symphony Personal Air Cooler',
-        title: 'Symphony Personal Air Cooler',
-        category: 'APPLIANCES' as const,
-        brand: 'Symphony',
-        model: 'Diet 12T',
-        itemType: 'Personal Air Cooler',
-        condition: 'Excellent' as const,
-        description: 'Personal tower air cooler in good condition, suitable for room cooling and summer heat.',
-        tags: ['Cooler', 'Appliance', 'Symphony'],
-        estimatedMarketPrice: 6800,
-      },
-    ];
-
-    const profile = itemProfiles[hashNum % itemProfiles.length];
-    response = formatProductionResponse(
-      {
-        itemId: 'ai-item-' + fingerprintHash.substring(0, 8),
-        name: profile.name,
-        title: profile.title,
-        category: profile.category,
-        brand: profile.brand,
-        model: profile.model,
-        itemType: profile.itemType,
-        condition: profile.condition,
-        description: profile.description,
-        tags: profile.tags,
-        estimatedMarketPrice: profile.estimatedMarketPrice,
-        confidence: 94,
-      },
-      fingerprintHash
-    );
-  }
-
-  // Cache response by fingerprint hash
-  if (response.success) {
-    fingerprintCache.set(fingerprintHash, response);
-  }
-  return response;
 }
 
-/**
- * Formatter for 100% Production-Grade AI Response
- */
 function formatProductionResponse(detection: AIDetectionResult, fingerprintHash: string): AIVisionResponse {
   const estimatedMarketPrice = detection.estimatedMarketPrice || 3500;
   const suggestedRentalPrice = Math.round(estimatedMarketPrice / 8);
@@ -424,10 +202,10 @@ function formatProductionResponse(detection: AIDetectionResult, fingerprintHash:
     fingerprintHash,
     qualityCheck: {
       passed: true,
-      score: 96,
-      message: 'Image visual analysis complete with strong product confidence.',
+      score: detection.confidence || 95,
+      message: `Object detection stage complete: Identified "${detection.detectedObject}".`,
     },
-    confidence: detection.confidence || 96,
+    confidence: detection.confidence || 95,
     detection: fullDetection,
     pricing: {
       suggestedRentalPrice,

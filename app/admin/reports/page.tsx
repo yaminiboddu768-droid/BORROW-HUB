@@ -12,12 +12,11 @@ import {
   Eye,
   MessageSquare,
 } from 'lucide-react';
-import { INITIAL_ADMIN_REPORTS, AdminReportDispute } from '@/lib/adminMockData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export default function AdminReportsPage() {
-  const [reports, setReports] = useState<AdminReportDispute[]>(INITIAL_ADMIN_REPORTS);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedReport, setSelectedReport] = useState<AdminReportDispute | null>(null);
+  const [selectedReport, setSelectedReport] = useState<any | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -26,31 +25,47 @@ export default function AdminReportsPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const queryClient = useQueryClient();
+
+  const { data: reports = [], isLoading } = useQuery({
+    queryKey: ['admin-reports'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/reports');
+      if (!res.ok) throw new Error('Failed to fetch reports');
+      return res.json();
+    }
+  });
+
+  const updateReportMutation = useMutation({
+    mutationFn: async ({ id, status, resolutionNotes }: { id: string, status: string, resolutionNotes?: string }) => {
+      const res = await fetch('/api/admin/reports', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status, resolutionNotes })
+      });
+      if (!res.ok) throw new Error('Failed to update report');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reports'] });
+      showToast(`Ticket marked as Resolved.`);
+      setSelectedReport(null);
+      setResolutionNotes('');
+    }
+  });
+
   const handleResolveTicket = (id: string, action: string) => {
-    setReports((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status: 'Resolved',
-              resolutionNotes: resolutionNotes || action,
-            }
-          : r
-      )
-    );
-    showToast(`Ticket ${selectedReport?.ticketNumber} marked as Resolved (${action}).`);
-    setSelectedReport(null);
-    setResolutionNotes('');
+    updateReportMutation.mutate({ id, status: 'RESOLVED', resolutionNotes: resolutionNotes || action });
   };
 
-  const filteredReports = reports.filter((r) => {
+  const filteredReports = reports.filter((r: any) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
-        r.ticketNumber.toLowerCase().includes(q) ||
-        r.reporterName.toLowerCase().includes(q) ||
-        r.reportedTarget.toLowerCase().includes(q) ||
-        r.type.toLowerCase().includes(q)
+        r.id.toLowerCase().includes(q) ||
+        (r.reporter?.name && r.reporter.name.toLowerCase().includes(q)) ||
+        r.reportedId.toLowerCase().includes(q) ||
+        r.reason.toLowerCase().includes(q)
       );
     }
     return true;
@@ -85,7 +100,7 @@ export default function AdminReportsPage() {
           <div>
             <span className="text-paper/50 block text-[10px]">OPEN TICKETS</span>
             <span className="text-red-400 font-bold text-base">
-              {reports.filter((r) => r.status !== 'Resolved').length} Active
+              {reports.filter((r: any) => r.status !== 'Resolved').length} Active
             </span>
           </div>
         </div>
@@ -104,63 +119,60 @@ export default function AdminReportsPage() {
       </div>
 
       {/* Tickets List */}
-      <div className="space-y-4">
-        {filteredReports.map((report) => (
-          <div
-            key={report.id}
-            className="bg-paper/10 backdrop-blur-xl border border-paper/15 rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-marigold/40 transition-all shadow-xl"
-          >
-            <div className="space-y-2 flex-1">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-bold font-data text-marigold">{report.ticketNumber}</span>
-                <span
-                  className={`text-[10px] uppercase font-bold font-data px-2 py-0.5 rounded ${
-                    report.severity === 'Critical'
-                      ? 'bg-red-500 text-white'
-                      : report.severity === 'High'
-                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                      : 'bg-marigold/20 text-marigold border border-marigold/30'
-                  }`}
-                >
-                  {report.severity} Severity
-                </span>
-                <span
-                  className={`text-[10px] font-data px-2.5 py-0.5 rounded-full font-bold ${
-                    report.status === 'Resolved'
-                      ? 'bg-moss/20 text-moss border border-moss/30'
-                      : 'bg-paper/15 text-paper border border-paper/20'
-                  }`}
-                >
-                  {report.status}
-                </span>
-              </div>
-
-              <h3 className="font-display font-bold text-base text-paper">{report.type}</h3>
-              <p className="text-xs text-paper/80 leading-relaxed max-w-3xl">{report.description}</p>
-
-              <div className="flex items-center gap-4 text-xs font-data text-paper/60 pt-1">
-                <span>Reporter: <strong className="text-paper">{report.reporterName}</strong></span>
-                <span>• Target: <strong className="text-paper">{report.reportedTarget}</strong></span>
-                <span>• Logged: {report.createdAt}</span>
-              </div>
-
-              {report.resolutionNotes && (
-                <div className="mt-2 p-2.5 rounded-xl bg-moss/10 border border-moss/30 text-xs text-moss font-data">
-                  <strong>Resolution:</strong> {report.resolutionNotes}
-                </div>
-              )}
-            </div>
-
-            <div className="shrink-0 flex items-center gap-2">
-              <button
-                onClick={() => setSelectedReport(report)}
-                className="px-4 py-2 rounded-xl bg-marigold text-ink font-display font-bold text-xs hover:bg-marigold-hover shadow transition-colors"
-              >
-                Investigate Ticket
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="bg-paper/10 backdrop-blur-xl border border-paper/15 rounded-3xl overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-paper/10 text-[10px] uppercase font-bold text-paper/50">
+              <th className="px-6 py-4">Reason / ID</th>
+              <th className="px-6 py-4">Reporter</th>
+              <th className="px-6 py-4">Reported ID</th>
+              <th className="px-6 py-4">Status</th>
+              <th className="px-6 py-4">Date</th>
+              <th className="px-6 py-4 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredReports.map((report: any) => (
+              <tr key={report.id} className="hover:bg-paper/5 transition-colors">
+                <td className="px-6 py-4">
+                  <div className="font-bold text-sm text-paper">{report.reason}</div>
+                  <div className="text-[10px] text-paper/50">ID: {report.id}</div>
+                </td>
+                <td className="px-6 py-4 font-medium">
+                  <div className="text-paper">{report.reporter?.name || 'N/A'}</div>
+                  <div className="text-paper/50 text-[10px]">{report.reporter?.email || 'N/A'}</div>
+                </td>
+                <td className="px-6 py-4 font-data">
+                  <div className="text-marigold font-bold text-sm">{report.reportedId}</div>
+                </td>
+                <td className="px-6 py-4 font-data">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      report.status === 'RESOLVED'
+                        ? 'bg-moss/20 text-moss'
+                        : 'bg-red-500/20 text-red-500'
+                    }`}
+                  >
+                    {report.status}
+                  </span>
+                </td>
+                <td className="px-6 py-4 font-data text-[11px] text-paper/60">
+                  {new Date(report.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  {report.status !== 'RESOLVED' && (
+                    <button
+                      onClick={() => setSelectedReport(report)}
+                      className="px-3 py-1.5 rounded-xl bg-paper/15 hover:bg-marigold hover:text-ink text-[10px] font-bold transition-colors"
+                    >
+                      Take Action
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Investigation Modal */}
@@ -169,8 +181,8 @@ export default function AdminReportsPage() {
           <div className="bg-[#182326] border border-paper/20 rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-5 shadow-2xl animate-in zoom-in-95">
             <div className="flex items-start justify-between border-b border-paper/10 pb-4">
               <div>
-                <span className="text-xs font-data text-marigold font-bold">{selectedReport.ticketNumber}</span>
-                <h2 className="font-display font-bold text-xl text-paper mt-0.5">{selectedReport.type}</h2>
+                <span className="text-xs font-data text-marigold font-bold">TICKET RESOLUTION</span>
+                <h2 className="font-display font-bold text-xl text-paper mt-0.5">Resolve Ticket</h2>
               </div>
               <button onClick={() => setSelectedReport(null)} className="text-paper/50 hover:text-paper">✕</button>
             </div>
@@ -178,8 +190,8 @@ export default function AdminReportsPage() {
             <div className="p-4 rounded-2xl bg-paper/5 border border-paper/10 text-xs space-y-2">
               <p className="text-paper/80">{selectedReport.description}</p>
               <div className="pt-2 border-t border-paper/10 flex items-center justify-between text-paper/60 font-data">
-                <span>Reporter: {selectedReport.reporterName}</span>
-                <span>Target: {selectedReport.reportedTarget}</span>
+                <span>Reporter: {selectedReport.reporter?.name || 'N/A'}</span>
+                <span>Target: {selectedReport.reportedId}</span>
               </div>
             </div>
 

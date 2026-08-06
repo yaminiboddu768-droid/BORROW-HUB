@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { useQuery } from '@tanstack/react-query';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -38,10 +39,9 @@ import {
 export default function BrowsePage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { addToast, neighbourhoodItems } = useApp();
+  const { addToast } = useApp();
 
   const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [radiusKm, setRadiusKm] = useState<number>(3.0);
@@ -55,36 +55,25 @@ export default function BrowsePage() {
     'FURNITURE', 'TRAVEL', 'PARTY', 'FITNESS', 'VEHICLES', 'APPLIANCES', 'OTHER'
   ];
 
-  const fetchItems = async () => {
-    try {
-      setIsLoading(true);
-      let dbItems: any[] = [];
-      try {
-        const res = await fetch(`/api/items?source=NEIGHBOUR`);
-        if (res.ok) {
-          dbItems = await res.json();
-        }
-      } catch (err) {
-        console.warn('API fetch fallback to local state', err);
-      }
-
-      const dbIds = new Set(dbItems.map((i) => i.id));
-      const combined = [
-        ...neighbourhoodItems,
-        ...dbItems.filter((i) => !neighbourhoodItems.some((n) => n.id === i.id))
-      ];
-      setItems(combined);
-    } catch (error) {
-      console.error('Failed to fetch items', error);
-      setItems(neighbourhoodItems);
-    } finally {
-      setIsLoading(false);
+  const { data: queryItems, isLoading, error } = useQuery({
+    queryKey: ['items', 'NEIGHBOUR', selectedCategory, searchQuery],
+    queryFn: async () => {
+      const url = new URL('/api/items', window.location.origin);
+      url.searchParams.append('source', 'NEIGHBOUR');
+      if (selectedCategory !== 'All') url.searchParams.append('category', selectedCategory);
+      if (searchQuery) url.searchParams.append('search', searchQuery);
+      
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error('Failed to fetch items');
+      return res.json();
     }
-  };
+  });
 
   useEffect(() => {
-    fetchItems();
-  }, [neighbourhoodItems]);
+    if (queryItems) {
+      setItems(queryItems);
+    }
+  }, [queryItems]);
 
   const getCategoryIcon = (iconName: string, className = "w-8 h-8 text-white/50") => {
     switch (iconName) {

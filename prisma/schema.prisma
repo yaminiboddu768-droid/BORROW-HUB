@@ -1,33 +1,111 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma schema for Borrow Hub SaaS platform
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String
-  email          String          @unique
-  passwordHash   String
-  role           String          @default("customer")
-  partnerStatus  String          @default("none")
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  averageRating  Float?
-  locationText   String?
-  items          Item[]          @relation("OwnerItems")
-  borrowRequests BorrowRequest[] @relation("BorrowerRequests")
-  partnerProfile PartnerProfile?
+  id                    String                 @id @default(cuid())
+  name                  String
+  email                 String                 @unique
+  passwordHash          String
+  role                  String                 @default("USER") // USER, BUSINESS, ADMIN
+  status                String                 @default("APPROVED") // PENDING, APPROVED, REJECTED, BLOCKED
+  partnerStatus         String                 @default("none")
+  avatarUrl             String?
+  phone                 String?
+  locationText          String?
+  averageRating         Float?
+  
+  // Geolocation
+  latitude              Float?
+  longitude             Float?
+  preferredSearchRadius Float                  @default(10.0)
+
+  // Soft Delete
+  isDeleted             Boolean                @default(false)
+  deletedAt             DateTime?
+
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  items                 Item[]                 @relation("OwnerItems")
+  borrowRequests        BorrowRequest[]        @relation("BorrowerRequests")
+  partnerProfile        PartnerProfile?
+  activityLogs          ActivityLog[]
+  businessVerification  BusinessVerification?
+  reviewsGiven          Review[]               @relation("ReviewsGiven")
+  reviewsReceived       Review[]               @relation("ReviewsReceived")
+  notifications         Notification[]
+  wishlists             Wishlist[]
+  reportsSubmitted      Report[]               @relation("ReportsSubmitted")
+  adminLogs             AdminLog[]
+
+  @@index([isDeleted])
+  @@index([latitude, longitude])
+}
+
+model PartnerProfile {
+  id                    String                 @id @default(cuid())
+  userId                String                 @unique
+  businessName          String
+  logoUrl               String?
+  ownerName             String
+  address               String
+  gstNumber             String?
+  
+  aadhaarUrl            String?
+  panUrl                String?
+  shopLicenseUrl        String?
+  
+  bankAccount           String?
+  upiId                 String?
+  
+  rentalPolicy          String?
+  damagePolicy          String?
+  returnPolicy          String?
+  
+  // Soft Delete
+  isDeleted             Boolean                @default(false)
+  deletedAt             DateTime?
+  
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isDeleted])
+}
+
+model BusinessVerification {
+  id                    String                 @id @default(cuid())
+  userId                String                 @unique
+  businessName          String
+  status                String                 @default("PENDING") // PENDING, APPROVED, REJECTED, BLOCKED
+  rejectionReason       String?
+  documents             String                 @default("[]") // JSON array of document URLs
+  verifiedAt            DateTime?
+
+  // Soft Delete
+  isDeleted             Boolean                @default(false)
+  deletedAt             DateTime?
+
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isDeleted])
 }
 
 model Item {
-  id                    String          @id @default(cuid())
+  id                    String                 @id @default(cuid())
   ownerId               String
   name                  String
   category              String
@@ -37,78 +115,204 @@ model Item {
   penaltyPerHour        Float?
   penaltyPerDay         Float?
   marketPrice           Float?
-  source                String
+  source                String                 @default("NEIGHBOUR") // NEIGHBOUR, ONLINE
   platformName          String?
-  distanceKm            Float?
-  timesBorrowed         Int             @default(0)
-  isAvailable           Boolean         @default(true)
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  distanceKm            Float?                 @default(0.5)
+  timesBorrowed         Int                    @default(0)
+  isAvailable           Boolean                @default(true)
+  availabilityStatus    String                 @default("Available")
   
-  iconName              String          @default("Wrench")
+  iconName              String                 @default("Wrench")
   imageUrl              String?
-  imageUrls             String          @default("[]")
-  availableToNeighbours Boolean         @default(true)
+  imageUrls             String                 @default("[]") // JSON array of Cloudinary image URLs
+  availableToNeighbours Boolean                @default(true)
 
-  // Partner Inventory Extensions
+  // Partner extensions
   brand                 String?
   model                 String?
   condition             String?
   securityDeposit       Float?
   damagePolicy          String?
-  quantity              Int             @default(1)
-  deliveryType          String          @default("Pickup Only")
+  quantity              Int                    @default(1)
+  deliveryType          String                 @default("Pickup Only")
 
-  owner                 User            @relation("OwnerItems", fields: [ownerId], references: [id], onDelete: Cascade)
+  // Geolocation
+  latitude              Float?
+  longitude             Float?
+  address               String?
+  city                  String?
+  state                 String?
+  country               String?
+  pincode               String?
+
+  // Soft Delete
+  isDeleted             Boolean                @default(false)
+  deletedAt             DateTime?
+
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  owner                 User                   @relation("OwnerItems", fields: [ownerId], references: [id], onDelete: Cascade)
+  images                ItemImage[]
   borrowRequests        BorrowRequest[]
+  wishlists             Wishlist[]
+  reviews               Review[]
 
   @@index([ownerId])
   @@index([category])
   @@index([source])
+  @@index([isDeleted])
+  @@index([latitude, longitude])
+}
+
+model ItemImage {
+  id                    String                 @id @default(cuid())
+  itemId                String
+  url                   String
+  publicId              String?
+  displayOrder          Int                    @default(0)
+  createdAt             DateTime               @default(now())
+
+  item                  Item                   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
 }
 
 model BorrowRequest {
-  id            String    @id @default(cuid())
-  itemId        String
-  borrowerId    String
-  status        String
-  startDate     DateTime?
-  endDate       DateTime?
-  estimatedCost Float?
-  penaltyAmount Float?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                    String                 @id @default(cuid())
+  itemId                String
+  borrowerId            String
+  status                String                 @default("REQUESTED") // REQUESTED, ACCEPTED, PICKED_UP, RETURNED, DECLINED, CANCELLED
+  startDate             DateTime?
+  endDate               DateTime?
+  estimatedCost         Float?
+  penaltyAmount         Float?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
-  item          Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  borrower      User      @relation("BorrowerRequests", fields: [borrowerId], references: [id], onDelete: Cascade)
+  item                  Item                   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  borrower              User                   @relation("BorrowerRequests", fields: [borrowerId], references: [id], onDelete: Cascade)
+  payment               Payment?
 
   @@index([itemId])
   @@index([borrowerId])
   @@index([status])
 }
 
-model PartnerProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  businessName    String
-  logoUrl         String?
-  ownerName       String
-  address         String
-  gstNumber       String?
-  
-  aadhaarUrl      String?
-  panUrl          String?
-  shopLicenseUrl  String?
-  
-  bankAccount     String?
-  upiId           String?
-  
-  rentalPolicy    String?
-  damagePolicy    String?
-  returnPolicy    String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model Payment {
+  id                    String                 @id @default(cuid())
+  requestId             String                 @unique
+  razorpayOrderId       String?
+  razorpayPaymentId     String?
+  amount                Float
+  status                String                 @default("PENDING") // PENDING, PAID, REFUNDED, FAILED
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request               BorrowRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id                    String                 @id @default(cuid())
+  itemId                String
+  authorId              String
+  targetUserId          String?
+  rating                Int
+  comment               String
+
+  // Soft Delete
+  isDeleted             Boolean                @default(false)
+  deletedAt             DateTime?
+
+  createdAt             DateTime               @default(now())
+
+  item                  Item                   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author                User                   @relation("ReviewsGiven", fields: [authorId], references: [id], onDelete: Cascade)
+  targetUser            User?                  @relation("ReviewsReceived", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+  @@index([authorId])
+  @@index([isDeleted])
+}
+
+model Notification {
+  id                    String                 @id @default(cuid())
+  userId                String
+  title                 String
+  message               String
+  type                  String                 @default("info")
+  isRead                Boolean                @default(false)
+  link                  String?
+  createdAt             DateTime               @default(now())
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Wishlist {
+  id                    String                 @id @default(cuid())
+  userId                String
+  itemId                String
+  createdAt             DateTime               @default(now())
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item                  Item                   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+}
+
+model Report {
+  id                    String                 @id @default(cuid())
+  reporterId            String
+  targetType            String // ITEM, USER, BUSINESS
+  targetId              String
+  reason                String
+  status                String                 @default("OPEN")
+
+  // Soft Delete
+  isDeleted             Boolean                @default(false)
+  deletedAt             DateTime?
+
+  createdAt             DateTime               @default(now())
+
+  reporter              User                   @relation("ReportsSubmitted", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([isDeleted])
+}
+
+model AdminLog {
+  id                    String                 @id @default(cuid())
+  adminId               String
+  action                String
+  details               String?
+  createdAt             DateTime               @default(now())
+
+  admin                 User                   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+}
+
+model EcoImpact {
+  id                    String                 @id @default(cuid())
+  totalBorrows          Int                    @default(0)
+  co2SavedKg            Float                  @default(0.0)
+  wastePreventedKg      Float                  @default(0.0)
+  moneySavedRupees      Float                  @default(0.0)
+  updatedAt             DateTime               @updatedAt
+}
+
+model ActivityLog {
+  id                    String                 @id @default(cuid())
+  userId                String
+  action                String
+  details               String?
+  ipAddress             String?
+  role                  String                 @default("USER")
+  browser               String?
+  os                    String?
+  deviceType            String?
+  createdAt             DateTime               @default(now())
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

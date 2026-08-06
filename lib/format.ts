@@ -18,21 +18,21 @@ export const CATEGORY_VERIFIED_IMAGES: Record<string, string> = {
   CAMERAS: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=800',
   'PHOTOGRAPHY & CONTENT CREATION': 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=800',
   VEHICLES: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?auto=format&fit=crop&q=80&w=800',
-  BOOKS: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=800',
-  COOKWARE: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&q=80&w=800',
+  BOOKS: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=800',
+  COOKWARE: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=800',
   SPORTS: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&q=80&w=800',
-  OUTDOORS: 'https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?auto=format&fit=crop&q=80&w=800',
+  OUTDOORS: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&q=80&w=800',
   'OUTDOOR & TRAVEL': 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&q=80&w=800',
-  PARTY: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80&w=800',
+  PARTY: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&q=80&w=800',
   'EVENT & PARTY': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&q=80&w=800',
   FURNITURE: 'https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&q=80&w=800',
-  APPLIANCES: 'https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?auto=format&fit=crop&q=80&w=800',
-  'HOME APPLIANCES': 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&q=80&w=800',
+  APPLIANCES: 'https://images.unsplash.com/photo-1585338107529-13afc5f02586?auto=format&fit=crop&q=80&w=800',
+  'HOME APPLIANCES': 'https://images.unsplash.com/photo-1585338107529-13afc5f02586?auto=format&fit=crop&q=80&w=800',
   FITNESS: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&q=80&w=800',
   TRAVEL: 'https://images.unsplash.com/photo-1565026057447-bc90a3dceb87?auto=format&fit=crop&q=80&w=800',
   'BABY & KIDS': 'https://images.unsplash.com/photo-1521503862198-2ae9a997bbc9?auto=format&fit=crop&q=80&w=800',
   OFFICE: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&q=80&w=800',
-  MEDICAL: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800',
+  MEDICAL: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&q=80&w=800',
   OTHER: 'https://images.unsplash.com/photo-1523987355523-c7b5b0dd90a7?auto=format&fit=crop&q=80&w=800',
 };
 
@@ -110,14 +110,13 @@ export function getCategoryFallbackImage(category?: string, name?: string): stri
 export function getItemImage(item: any): string {
   if (!item) return DEFAULT_ITEM_IMAGE;
   
-  const expectedFallback = getCategoryFallbackImage(item.category, item.name);
-  let candidateUrl = '';
-
   const isValidUrl = (url: any): boolean => {
     if (typeof url !== 'string') return false;
     const trimmed = url.trim();
     return trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:image') || trimmed.startsWith('blob:');
   };
+
+  let candidateUrl = '';
 
   if (item.imageUrl && isValidUrl(item.imageUrl)) {
     candidateUrl = item.imageUrl.trim();
@@ -140,31 +139,26 @@ export function getItemImage(item: any): string {
     }
   }
 
-  // If no candidate image exists, return verified category matching image
-  if (!candidateUrl) {
-    return expectedFallback;
+  if (candidateUrl) {
+    const nameLower = (item.name || '').toLowerCase();
+    
+    if (nameLower.includes('helmet')) {
+      return 'https://images.unsplash.com/photo-1622185135505-2d795003994a?auto=format&fit=crop&q=80&w=800';
+    }
+    if (nameLower.includes('cooker') || nameLower.includes('dutch oven') || nameLower.includes('pot')) {
+      return 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=800';
+    }
+    if (nameLower.includes('cooler')) {
+      return 'https://images.unsplash.com/photo-1585338107529-13afc5f02586?auto=format&fit=crop&q=80&w=800';
+    }
+    if ((nameLower.includes('dune') || nameLower.includes('masterworks')) && candidateUrl.includes('photo-1544716278')) {
+      return 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=800';
+    }
+
+    return candidateUrl;
   }
 
-  // Check if candidate URL is a known mismatched drill image on a non-tool item
-  if (candidateUrl === CATEGORY_VERIFIED_IMAGES.TOOLS && 
-      !(item.category || '').toUpperCase().includes('TOOL') &&
-      !(item.category || '').toUpperCase().includes('CONSTRUCTION') &&
-      !(item.category || '').toUpperCase().includes('GARDENING') &&
-      !(item.name || '').toLowerCase().includes('drill') &&
-      !(item.name || '').toLowerCase().includes('saw') &&
-      !(item.name || '').toLowerCase().includes('washer') &&
-      !(item.name || '').toLowerCase().includes('ladder') &&
-      !(item.name || '').toLowerCase().includes('hammer') &&
-      !(item.name || '').toLowerCase().includes('wrench') &&
-      !(item.name || '').toLowerCase().includes('grinder') &&
-      !(item.name || '').toLowerCase().includes('cutter') &&
-      !(item.name || '').toLowerCase().includes('welding') &&
-      !(item.name || '').toLowerCase().includes('generator') &&
-      !(item.name || '').toLowerCase().includes('compressor')) {
-    return expectedFallback;
-  }
-
-  return candidateUrl;
+  return getCategoryFallbackImage(item.category, item.name);
 }
 
 // Complete, realistic, professional master listings for each category

@@ -15,12 +15,11 @@ import {
   ShieldAlert,
   Sparkles,
 } from 'lucide-react';
-import { INITIAL_ADMIN_KYC_REQUESTS, AdminPartnerKYC } from '@/lib/adminMockData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export default function AdminBusinessVerificationPage() {
-  const [kycList, setKycList] = useState<AdminPartnerKYC[]>(INITIAL_ADMIN_KYC_REQUESTS);
   const [activeTab, setActiveTab] = useState<'All' | 'Pending' | 'Approved'>('Pending');
-  const [selectedKyc, setSelectedKyc] = useState<AdminPartnerKYC | null>(null);
+  const [selectedKyc, setSelectedKyc] = useState<any | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -30,54 +29,65 @@ export default function AdminBusinessVerificationPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const filteredList = kycList.filter((item) => {
-    if (activeTab === 'Pending' && item.status !== 'Pending') return false;
-    if (activeTab === 'Approved' && item.status !== 'Approved') return false;
+  const queryClient = useQueryClient();
+
+  const { data: kycList = [], isLoading } = useQuery({
+    queryKey: ['admin-kyc'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/kyc');
+      if (!res.ok) throw new Error('Failed to fetch KYC requests');
+      return res.json();
+    }
+  });
+
+  const updateKycMutation = useMutation({
+    mutationFn: async ({ id, status, rejectionReason }: { id: string, status: string, rejectionReason?: string }) => {
+      const res = await fetch('/api/admin/kyc', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status, rejectionReason })
+      });
+      if (!res.ok) throw new Error('Failed to update KYC');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-kyc'] });
+      if (data.status === 'APPROVED') {
+        showToast(`Approved KYC and issued Verified Partner Badge for "${selectedKyc?.businessName || data.id}".`);
+      } else {
+        showToast(`Rejected KYC request for "${selectedKyc?.businessName || data.id}".`);
+      }
+      setSelectedKyc(null);
+      setRejectionReason('');
+    }
+  });
+
+  const filteredList = kycList.filter((item: any) => {
+    if (activeTab === 'Pending' && item.status !== 'PENDING') return false;
+    if (activeTab === 'Approved' && item.status !== 'APPROVED') return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
         item.businessName.toLowerCase().includes(q) ||
-        item.ownerName.toLowerCase().includes(q) ||
-        item.gstin.toLowerCase().includes(q) ||
-        item.city.toLowerCase().includes(q)
+        (item.user?.name && item.user.name.toLowerCase().includes(q))
       );
     }
     return true;
   });
 
   const handleApprove = (id: string) => {
-    setKycList((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: 'Approved',
-              verifiedAt: new Date().toISOString().split('T')[0],
-            }
-          : item
-      )
-    );
-    showToast(`Approved KYC and issued Verified Partner Badge for "${selectedKyc?.businessName || id}".`);
-    setSelectedKyc(null);
+    updateKycMutation.mutate({ id, status: 'APPROVED' });
   };
 
   const handleReject = (id: string) => {
-    if (!rejectionReason.trim()) return;
-    setKycList((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: 'Rejected',
-              rejectionReason: rejectionReason.trim(),
-            }
-          : item
-      )
-    );
-    showToast(`Rejected KYC request for "${selectedKyc?.businessName}". Rejection reason logged.`);
-    setRejectionReason('');
-    setSelectedKyc(null);
+    if (!rejectionReason.trim()) {
+      showToast('Please provide a reason for rejection.');
+      return;
+    }
+    updateKycMutation.mutate({ id, status: 'REJECTED', rejectionReason });
   };
+
+
 
   return (
     <div className="space-y-6">
@@ -146,44 +156,44 @@ export default function AdminBusinessVerificationPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-paper/10 text-paper">
-              {filteredList.map((kyc) => (
+              {filteredList.map((kyc: any) => (
                 <tr key={kyc.id} className="hover:bg-paper/5 transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-bold text-sm text-paper">{kyc.businessName}</div>
-                    <div className="text-xs text-paper/60">Owner: {kyc.ownerName} • {kyc.email}</div>
+                    <div className="text-xs text-paper/60">Owner: {kyc.user?.name || 'N/A'} • {kyc.user?.email || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 font-medium">
-                    <div>{kyc.category}</div>
-                    <div className="text-paper/50 font-data">{kyc.city}</div>
+                    <div>N/A</div>
+                    <div className="text-paper/50 font-data">N/A</div>
                   </td>
                   <td className="px-6 py-4 font-data">
-                    <div className="text-marigold font-bold">{kyc.gstin}</div>
+                    <div className="text-marigold font-bold">{kyc.taxId || 'N/A'}</div>
                     <div className="text-paper/50">{kyc.registrationNumber}</div>
                   </td>
                   <td className="px-6 py-4 font-data">
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        kyc.riskScore === 'Low'
-                          ? 'bg-moss/20 text-moss border border-moss/30'
-                          : 'bg-marigold/20 text-marigold border border-marigold/30'
+                        kyc.riskScore && kyc.riskScore < 30 ? 'bg-moss/20 text-moss' :
+                        kyc.riskScore && kyc.riskScore < 60 ? 'bg-amber-500/20 text-amber-500' :
+                        'bg-red-500/20 text-red-500'
                       }`}
                     >
-                      {kyc.riskScore} Risk
+                      Risk: {kyc.riskScore || 'Low'}
                     </span>
                   </td>
                   <td className="px-6 py-4 font-data">
                     <span
                       className={`px-2.5 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 ${
-                        kyc.status === 'Approved'
+                        kyc.status === 'APPROVED'
                           ? 'bg-moss/20 text-moss border border-moss/30'
-                          : kyc.status === 'Pending'
+                          : kyc.status === 'PENDING'
                           ? 'bg-marigold/20 text-marigold border border-marigold/30'
                           : 'bg-red-500/20 text-red-300 border border-red-500/30'
                       }`}
                     >
-                      {kyc.status === 'Approved' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                      {kyc.status === 'Pending' && <Clock className="w-3.5 h-3.5" />}
-                      {kyc.status === 'Rejected' && <XCircle className="w-3.5 h-3.5" />}
+                      {kyc.status === 'APPROVED' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                      {kyc.status === 'PENDING' && <Clock className="w-3.5 h-3.5" />}
+                      {kyc.status === 'REJECTED' && <XCircle className="w-3.5 h-3.5" />}
                       <span>{kyc.status}</span>
                     </span>
                   </td>
